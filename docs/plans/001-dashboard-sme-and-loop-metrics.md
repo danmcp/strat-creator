@@ -117,12 +117,11 @@ python3 scripts/frontmatter.py set "$task_path" \
   "refine_count=$((current_refine_count + 1))"
 ```
 
-**Recoverability:** the body rewrite and the `refine_count` increment target the
-same file and must be committed together. Write the refined body, then increment
-the counter, then verify both landed before reporting success. If either the
-write or the verification fails, redo the pass rather than leaving body and
-counter diverged. The safe failure direction is an undercount (counter behind
-body), never an overcount.
+**Ordering:** `refine_count` is a best-effort dashboard metric, not transactional
+state. Increment it as the last step, after the body is written. If the increment
+fails, leave it - the result is an undercount by one (never an overcount), which
+the next refine corrects and which the approximate-count handling already
+tolerates. Do not re-run the (expensive) refine pass just to fix the counter.
 
 Files: `.claude/skills/strategy-refine/SKILL.md`
 
@@ -163,10 +162,9 @@ Files: `scripts/generate-dashboard.py`
   absent** (`null`). See [ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md)
   for the absent-vs-zero rule.
 - Add "Iterations" column to the per-strategy table
-- **Provenance (required):** each iteration count MUST show its source -
-  instrumented (`refine_count`) vs. CI-run-approximate (fallback) - e.g. a badge
-  or suffix, so an approximate count is never read as instrumented. This is a
-  binding cross-file contract with ADR-0001's provenance rule.
+- **Provenance:** mark fallback-derived counts as approximate (e.g. a `~` prefix
+  or asterisk) so they are not read as instrumented counts. Only the fallback
+  needs the marker; instrumented counts render plain. Matches ADR-0001.
 
 Files: `scripts/generate-dashboard.py`
 
@@ -186,8 +184,8 @@ Files: `scripts/generate-dashboard.py`
       (fallback), explicit `0` -> authoritative
 - [ ] Pipeline-run counting works as fallback only when `refine_count` is absent,
       using baseline `max(0, distinct_runs - 1)`
-- [ ] Iteration counts show provenance (instrumented vs. CI-approximate), with a
-      test covering source selection and fallback
+- [ ] Fallback-derived iteration counts are visually marked as approximate
+      (instrumented counts render plain)
 - [ ] Unit tests pass for SME Input detection
 - [ ] `make test` passes
 

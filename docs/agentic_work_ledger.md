@@ -276,7 +276,7 @@ Next:
 1. Read AGENTS.md
 2. Read PLAN.md
 3. Select a task from pending/
-4. Claim the task atomically: move it into current/ and commit before working
+4. Claim the task: move it into current/ and record the claim before working
    (see Concurrency and Shared State)
 5. Execute work
 6. Record discoveries
@@ -313,16 +313,19 @@ Reviewer Agent:
 
 # Concurrency and Shared State
 
-Multiple agents operate on the ledger at once, so every shared-state update
-follows one concurrency model to avoid lost updates and double-claims:
+Multiple agents can operate on the ledger at once. This doc does not mandate a
+single locking mechanism - the right one depends on your execution model - but
+these invariants hold:
 
-- **Claim tasks atomically.** Claiming a task is a single move
-  (`tasks/pending/foo.md` -> `tasks/current/foo.md`) committed before work
-  starts. The move succeeds or fails as a whole; a task already claimed by
-  another agent surfaces as a conflict, not a silent double-claim.
-- **Use canonical paths.** Always reference a task by its full
-  `docs/tasks/<state>/<name>.md` path so state (the directory) is unambiguous.
-- **Do not co-write one shared log.** Either give each agent its own
+- **One agent per task.** Claiming a task means moving it into `current/` and
+  recording the claim before work starts. In a push-based setup (each agent in
+  its own clone) a double-claim surfaces as a merge conflict; on a shared
+  filesystem a bare move is not atomic across processes, so use an explicit lock.
+  Pick whatever matches your setup - the invariant is that no two agents work the
+  same task.
+- **Reference tasks by canonical path** (`docs/tasks/<state>/<name>.md`) so state
+  (the directory) is unambiguous.
+- **Never co-write one shared log.** Give each agent its own
   `notes/session-log-<agent>.md`, or append to the shared log as separate,
   append-only commits (one entry per commit) so a merge never clobbers another
   agent's entry.

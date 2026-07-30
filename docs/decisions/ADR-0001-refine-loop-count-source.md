@@ -80,9 +80,10 @@ number of productive refine passes up to and including the one that achieves
 rubric-pass. The same inclusive definition applies to the plan (Task 2.2) and to
 the tests.
 
-**Provenance rule (mandatory):** the dashboard MUST display the source of each
-iteration count - instrumented (`refine_count`) versus CI-run-approximate
-(fallback) - so a run-count proxy is never mistaken for an instrumented count.
+**Provenance:** the dashboard marks fallback-derived counts as approximate (e.g.
+a `~` or asterisk) so a CI-run proxy is not read as an instrumented count. This
+is a cheap rendering marker, and it matters only while pre-instrumentation
+strategies remain - it retires as `refine_count` populates.
 
 ## Consequences
 
