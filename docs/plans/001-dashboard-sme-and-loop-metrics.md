@@ -53,14 +53,17 @@ In `scripts/generate-dashboard.py`:
   `approved` (see `is_approve()` in `scripts/extract-pipeline-data.py:117`).
   Use `is_approve()` as the single authoritative predicate for this KPI (import
   it rather than inlining `recommendation == "approve"`), so the KPI cannot drift.
-  Note that this is **not** currently identical to the `strat-creator-rubric-pass`
-  label: `artifact_utils.compute_strat_labels()` derives the label from
+  **The KPI is computed only from `recommendation` via `is_approve()`; it MUST
+  NOT be derived from the `strat-creator-rubric-pass` label.** This makes the KPI
+  self-contained, so it cannot be corrupted by the known label divergence:
+  `artifact_utils.compute_strat_labels()` derives the label from
   `recommendation == "approve"` only, so a STRAT with `recommendation: approved`
-  satisfies `is_approve()` but does not carry the label. These two paths must be
-  reconciled to one predicate; until they are, `is_approve()` is the broader and
-  correct definition for the KPI, and aligning `compute_strat_labels()` onto
-  `is_approve()` is the follow-up that makes them equivalent. Cover both `approve`
-  and `approved` in the fixture.
+  satisfies `is_approve()` (and counts for the KPI) but does not carry the label.
+  Aligning `compute_strat_labels()` onto `is_approve()` is deliberately **out of
+  scope** for this dashboard PR: the label drives pipeline gates, so changing its
+  derivation is a behavior change that would newly grant the label to `approved`
+  strategies and must be evaluated on its own. It is tracked separately, not
+  folded in here. Cover both `approve` and `approved` in the KPI fixture.
 - Count STRATs where `is_approve(recommendation)` is true AND `has_sme_input`
   is false.
 - Add KPI card to Executive Summary: "N of M rubric-pass STRATs had empty SME Input (X%)"
@@ -113,25 +116,33 @@ this inclusive definition (matches ADR-0001).
 Increment as the final step. Read the current value from the file's frontmatter
 first - do not assume it is set. An unset shell variable evaluates to `0` in
 `$(( ))`, so skipping the read makes every pass write `1` instead of
-incrementing. Read the raw value, map absent (or `null`) to `0`, then increment:
+incrementing. Read the raw value and accept only a non-boolean integer `>= 0`;
+map absent, `null`, or any malformed value to `0` so a bad field cannot break the
+shell arithmetic or produce a wrong count, then increment:
 
 ```bash
 # only after confirming this pass rewrote body content
 current_refine_count=$(python3 scripts/frontmatter.py read "$task_path" \
-  | python3 -c 'import sys,json; print(json.load(sys.stdin).get("refine_count") or 0)')
+  | python3 -c 'import sys,json; v=json.load(sys.stdin).get("refine_count"); print(v if isinstance(v,int) and not isinstance(v,bool) and v>=0 else 0)')
 python3 scripts/frontmatter.py set "$task_path" \
   "refine_count=$((current_refine_count + 1))"
 ```
 
-**Ordering:** `refine_count` is a best-effort dashboard metric, not transactional
-state. Increment it as the last step, after the body is written. If the increment
-fails, leave it - the result is an undercount by one (never an overcount), which
-the next refine corrects and which the approximate-count handling already
-tolerates. Do not re-run the (expensive) refine pass just to fix the counter.
-(If an implementer wants to close the crash window entirely, the body and
-`refine_count` live in the same file, so both can be written in a single file
-replacement - no rollback or reconciliation machinery is warranted for a
-best-effort metric.)
+**Atomicity (recommended):** the body and `refine_count` live in the same
+strategy file, so write both in a single file replacement - render the new body
+together with the incremented frontmatter, then one write. This is the
+recommended approach because it closes the window where the body is updated but
+the counter is not, and it costs nothing beyond ordering the render.
+
+`refine_count` is a best-effort dashboard metric, not transactional state, so no
+rollback or reconciliation machinery is warranted beyond that single write. If a
+single write is genuinely impractical and the counter update fails after the body
+is written, the field is left at its previous value - a permanent undercount by
+one for that strategy (never an overcount). This does not self-correct: a present
+counter is authoritative (ADR-0001), so a later converged no-op pass will not
+touch it and a later productive pass simply continues from the stale value. A
+one-count undercount is acceptable for this metric; re-running the (expensive)
+refine pass solely to fix the counter is not.
 
 Files: `.claude/skills/strategy-refine/SKILL.md`
 
@@ -148,10 +159,10 @@ output by `extract_strategy()`. Preserve the absent-vs-zero distinction: emit
 the integer value (including `0`) when it is present (see
 [ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md)).
 
-Validate the value: a valid `refine_count` is an integer `>= 0`. Treat a
-malformed value (non-integer or negative, e.g. from a hand-edited file) as if
-the field were absent - emit `null` so it falls back rather than corrupting the
-metric. Assert this in the fixture.
+Validate the value: a valid `refine_count` is a non-boolean integer `>= 0`. Treat
+any malformed value (non-integer, boolean, or negative, e.g. from a hand-edited
+file) as if the field were absent - emit `null` so it falls back rather than
+corrupting the metric. Assert this in the fixture (see ADR-0001, point 2).
 
 Files: `scripts/extract-pipeline-data.py`
 

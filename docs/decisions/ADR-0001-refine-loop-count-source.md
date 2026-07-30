@@ -50,9 +50,13 @@ pipeline-run count as a fallback**:
    rewritten) does not increment.
 2. The dashboard treats `refine_count` as authoritative whenever the field is
    **present, including an explicit `0`** (which means zero productive refine
-   passes). Extraction MUST preserve the distinction between absent and zero by
-   emitting `refine_count: null` when the field is absent from a strategy's
-   frontmatter and the integer value (including `0`) when it is present.
+   passes). Only a **non-boolean integer `>= 0`** is a valid authoritative value.
+   Extraction MUST preserve the distinction between absent and zero by emitting
+   `refine_count: null` when the field is absent from a strategy's frontmatter and
+   the integer value (including `0`) when it is present. A malformed value
+   (non-integer, boolean, or negative) is **not** trusted: it normalizes to
+   `null` and triggers the fallback, exactly as an absent field does, so a
+   corrupt field can never fabricate an authoritative count.
 3. The pipeline-run fallback applies **only when the field is absent** (`null`).
    Fallback iterations = `max(0, (distinct pipeline runs containing the
    strat_id) - 1)` - the initial run is the creation baseline, not a refine
