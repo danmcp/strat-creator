@@ -180,6 +180,14 @@ SCHEMAS = {
             "required": False,
             "default": None,
         },
+        # Count of productive (body-changing) refine passes. Optional with NO
+        # materialized default: absence must stay distinguishable from an
+        # explicit 0 so the dashboard can fall back for un-instrumented
+        # strategies. See ADR-0001 and docs/plans/001.
+        "refine_count": {
+            "type": "int",
+            "required": False,
+        },
     },
     "strat-review": {
         "strat_id": {

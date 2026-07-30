@@ -127,6 +127,44 @@ def is_split(v):
     return v == "split"
 
 
+def has_sme_input(body):
+    """Return True if the Staff Engineer / SME Input section has human content.
+
+    Detects content beyond the default template placeholder (the italic
+    boilerplate and any HTML comments). Absent section -> False.
+    """
+    marker = "## Staff Engineer / SME Input"
+    idx = body.find(marker)
+    if idx == -1:
+        return False
+    sme_section = body[idx + len(marker):]
+    next_header = re.search(r'\n## ', sme_section)
+    if next_header:
+        sme_section = sme_section[:next_header.start()]
+    # Strip the default italic boilerplate placeholder.
+    sme_section = re.sub(
+        r'\*Add technical corrections.*?from Jira\.\*',
+        '', sme_section, flags=re.DOTALL)
+    # Strip HTML comments (alternate placeholder form).
+    sme_section = re.sub(r'<!--.*?-->', '', sme_section, flags=re.DOTALL)
+    return len(sme_section.strip()) > 0
+
+
+def valid_refine_count(v):
+    """Normalize a raw refine_count value, failing closed.
+
+    Returns the value only when it is a valid non-boolean integer >= 0
+    (an explicit 0 is authoritative). Absent (None) or malformed values
+    (non-integer, boolean, or negative) normalize to None so the dashboard
+    falls back to pipeline-run inference. See ADR-0001.
+    """
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int) and v >= 0:
+        return v
+    return None
+
+
 def extract_strategy(strat_id, task, review, review_comment):
     """Build a JSON-friendly strategy dict (no HTML rendering)."""
     meta = task["meta"]
@@ -144,6 +182,8 @@ def extract_strategy(strat_id, task, review, review_comment):
         "priority": meta.get("priority", ""),
         "status": meta.get("status", ""),
         "size": extract_size(body),
+        "has_sme_input": has_sme_input(body),
+        "refine_count": valid_refine_count(meta.get("refine_count")),
         "recommendation": rev_meta.get("recommendation", ""),
         "needs_attention": rev_meta.get("needs_attention", False),
         "scores": {

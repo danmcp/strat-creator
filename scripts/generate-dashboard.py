@@ -25,6 +25,17 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from artifact_utils import read_frontmatter, compute_strat_labels, label_category
 
+# extract-pipeline-data.py is hyphenated (not importable by name); load it so the
+# dashboard shares a single source of truth for the metric parsers/validators
+# (has_sme_input, valid_refine_count) rather than re-implementing them here.
+import importlib.util as _il
+_epd_path = os.path.join(os.path.dirname(__file__), "extract-pipeline-data.py")
+_epd_spec = _il.spec_from_file_location("extract_pipeline_data", _epd_path)
+_epd = _il.module_from_spec(_epd_spec)
+_epd_spec.loader.exec_module(_epd)
+has_sme_input = _epd.has_sme_input
+valid_refine_count = _epd.valid_refine_count
+
 
 # ─── Helper functions (shared with generate-report.py) ────────────────────────
 
@@ -42,6 +53,50 @@ def is_split(v):
 
 def pct(n, total):
     return round(100 * n / total) if total > 0 else 0
+
+
+# ─── Metric helpers (SME Input + refine loop count) ──────────────────────────
+# These mirror the client-side logic in recomputeExec()/renderExecutiveSummary()
+# so the contract can be unit-tested in Python. Keep the two in sync. See
+# docs/plans/001 and docs/decisions/ADR-0001-refine-loop-count-source.md.
+
+def count_pipeline_runs(runs):
+    """Map strat_id -> number of distinct runs that contain that strategy.
+
+    Used as the fallback iteration signal when a strategy has no authoritative
+    refine_count.
+    """
+    counts = {}
+    for run in runs:
+        for sid in {s["strat_id"] for s in run.get("strategies", [])}:
+            counts[sid] = counts.get(sid, 0) + 1
+    return counts
+
+
+def refine_iterations(refine_count, pipeline_run_count):
+    """Resolve one strategy's refine-iteration count.
+
+    Returns (value, approximate). An authoritative refine_count (a non-boolean
+    int >= 0, including an explicit 0) wins verbatim with approximate=False.
+    Otherwise - absent, null, or malformed - fall back to the pipeline-run
+    baseline max(0, distinct_runs - 1) and mark it approximate. See ADR-0001.
+    """
+    v = valid_refine_count(refine_count)
+    if v is not None:
+        return v, False
+    runs = pipeline_run_count if isinstance(pipeline_run_count, int) and pipeline_run_count > 0 else 1
+    return max(0, runs - 1), True
+
+
+def empty_sme_rubric_pass(strategies):
+    """Return (empty_sme_count, rubric_pass_total) for the SME Input KPI.
+
+    Rubric-pass is defined solely by is_approve(recommendation) - never the
+    strat-creator-rubric-pass label (see docs/plans/001, Task 1.2).
+    """
+    rubric_pass = [s for s in strategies if is_approve(s.get("recommendation"))]
+    empty = [s for s in rubric_pass if not s.get("has_sme_input")]
+    return len(empty), len(rubric_pass)
 
 def health_color(rate):
     if rate >= 70:
@@ -298,6 +353,8 @@ def extract_run_stats(run_dir, config):
             "size": cfg.get("size") or extract_size(task.get("body", "")),
             "baseline": cfg.get("baseline", False),
             "cross_component": False,
+            "has_sme_input": has_sme_input(task.get("body", "")),
+            "refine_count": valid_refine_count(meta.get("refine_count")),
             "recommendation": rev_meta.get("recommendation", "—"),
             "needs_attention": rev_meta.get("needs_attention", False),
             "feasibility": reviewers.get("feasibility", "—"),
@@ -442,6 +499,8 @@ def load_run_from_json(run_dir, config):
             "size": cfg.get("size") or s.get("size") or "—",
             "baseline": cfg.get("baseline", False),
             "cross_component": False,
+            "has_sme_input": s.get("has_sme_input", False),
+            "refine_count": valid_refine_count(s.get("refine_count")),
             "recommendation": s.get("recommendation", "—"),
             "needs_attention": s.get("needs_attention", False),
             "feasibility": reviewers.get("feasibility", "—"),
@@ -1158,12 +1217,19 @@ function filterByDays(runs, days) {{
 
 // ─── Dry-run filtering ─────────────────────────────────────────────────────
 function recomputeExec(runs) {{
+    // Distinct pipeline runs per strat_id - fallback signal for refine iterations.
+    const runCounts = {{}};
+    for (const run of runs) {{
+        const ids = new Set(run.strategies.map(s => s.strat_id));
+        ids.forEach(id => {{ runCounts[id] = (runCounts[id] || 0) + 1; }});
+    }}
     const seen = {{}};
     for (let i = runs.length - 1; i >= 0; i--) {{
         const run = runs[i];
         for (const s of run.strategies) {{
             if (!seen[s.strat_id]) {{
-                seen[s.strat_id] = {{...s, run_id: run.run_id, run_label: run.label}};
+                seen[s.strat_id] = {{...s, run_id: run.run_id, run_label: run.label,
+                    pipeline_run_count: runCounts[s.strat_id] || 1}};
             }}
         }}
     }}
@@ -1204,6 +1270,14 @@ function recomputeExec(runs) {{
     const rfeKeys = new Set();
     strategies.forEach(s => {{ if (s.source_rfe) rfeKeys.add(s.source_rfe); }});
     skipped.forEach(s => {{ if (s.rfe_key) rfeKeys.add(s.rfe_key); }});
+    // SME Input KPI: rubric-pass STRATs (is_approve only) with empty SME Input.
+    const rubricPassStrats = strategies.filter(s => isApprove(s.recommendation));
+    const smeEmpty = rubricPassStrats.filter(s => !s.has_sme_input).length;
+    // Refine iterations: authoritative refine_count else pipeline-run fallback.
+    const iters = strategies.map(refineIterations);
+    const avgRefine = iters.length > 0
+        ? Math.round(10 * iters.reduce((a, it) => a + it.value, 0) / iters.length) / 10
+        : null;
     return {{
         total, total_rfes: rfeKeys.size, total_runs: runs.length,
         reviewed: totalReviewed, approved, revise, reject, split,
@@ -1211,9 +1285,25 @@ function recomputeExec(runs) {{
         approval_rate: pct(approved, totalReviewed),
         revision_rate: pct(revise, totalReviewed),
         avg_total_score: avgScore, dimensions, strategies, skipped,
+        sme_empty: smeEmpty, rubric_pass_total: rubricPassStrats.length,
+        avg_refine: avgRefine,
         weakest_dim: total > 0 ? dims.reduce((a, b) => dimensions[a].rate < dimensions[b].rate ? a : b) : '—',
         strongest_dim: total > 0 ? dims.reduce((a, b) => dimensions[a].rate > dimensions[b].rate ? a : b) : '—',
     }};
+}}
+
+// Resolve one strategy's refine-iteration count. Authoritative refine_count (a
+// non-boolean int >= 0, incl. 0) wins; otherwise fall back to the pipeline-run
+// baseline max(0, distinct_runs - 1), marked approximate. Mirrors the Python
+// refine_iterations() helper. See ADR-0001.
+function refineIterations(s) {{
+    const rc = s.refine_count;
+    if (typeof rc === 'number' && Number.isInteger(rc) && rc >= 0) {{
+        return {{value: rc, approx: false}};
+    }}
+    const runs = (typeof s.pipeline_run_count === 'number' && s.pipeline_run_count > 0)
+        ? s.pipeline_run_count : 1;
+    return {{value: Math.max(0, runs - 1), approx: true}};
 }}
 
 function applyTimeRange() {{
@@ -1553,14 +1643,23 @@ function renderExecutiveSummary() {{
 
     // KPI cards
     const skippedCount = e.skipped ? e.skipped.length : 0;
+    // SME Input: how many rubric-pass STRATs shipped with no human SME input.
+    const smeEmpty = e.sme_empty || 0;
+    const rubricTotal = e.rubric_pass_total || 0;
+    const smePct = rubricTotal > 0 ? Math.round(100 * smeEmpty / rubricTotal) : 0;
+    const smeColor = smeEmpty > 0 ? '#d29922' : '#3fb950';
+    // Refine iterations: avg across all STRATs (authoritative or fallback).
+    const avgRefine = e.avg_refine;
+    const avgRefineHtml = (avgRefine !== null && avgRefine !== undefined) ? avgRefine : '—';
     const signOffCard = signedOff !== null
         ? `<div class="kpi"><div class="kpi-value" style="color:#bc8cff">${{signedOff}}</div><div class="kpi-label">Human Sign-Off${{srcBadge('Jira')}}</div><div class="kpi-detail">Staff engineer confirmed</div></div>`
         : '';
-    const cols = signedOff !== null ? 7 : 6;
-    html += `<div class="kpi-grid" style="grid-template-columns: repeat(${{cols}}, 1fr)">
+    html += `<div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr))">
         <div class="kpi"><div class="kpi-value" style="color:#f0f6fc">${{e.total_rfes}}</div><div class="kpi-label">Total RFEs</div><div class="kpi-detail">${{e.total}} strategies + ${{skippedCount}} skipped<br><span style="color:#6e7681;font-size:0.85em">(One RFE may contain 1+ strategies)</span></div></div>
         <div class="kpi"><div class="kpi-value" style="color:#58a6ff">${{createdCount}}</div><div class="kpi-label">Strategies Created${{srcBadge(createdSrc)}}</div><div class="kpi-detail">${{createdDetail}}</div></div>
         <div class="kpi"><div class="kpi-value" style="color:#3fb950">${{rubricPass}}</div><div class="kpi-label">Rubric Pass${{srcBadge(rubricSrc)}}</div><div class="kpi-detail">${{rubricSrc ? 'CI-approved in Jira' : e.approved + ' approved'}}</div></div>
+        <div class="kpi"><div class="kpi-value" style="color:${{smeColor}}">${{smeEmpty}}</div><div class="kpi-label">Empty SME Input</div><div class="kpi-detail">${{smePct}}% of ${{rubricTotal}} rubric-pass STRATs</div></div>
+        <div class="kpi"><div class="kpi-value" style="color:#58a6ff">${{avgRefineHtml}}</div><div class="kpi-label">Avg Refine Iterations</div><div class="kpi-detail">across ${{e.total}} STRATs</div></div>
         ${{signOffCard}}
         <div class="kpi"><div class="kpi-value" style="color:${{healthColor(avgScorePct)}}">${{avgScoreHtml}}</div><div class="kpi-label">Avg Score</div><div class="kpi-detail">Threshold: 6/8</div></div>
         <div class="kpi"><div class="kpi-value" style="color:${{attnCount > 0 ? '#f85149' : '#3fb950'}}">${{attnCount}}</div><div class="kpi-label">Needs Attention${{srcBadge(attnSrc)}}</div><div class="kpi-detail">${{attnCount === 0 ? 'All clear' : 'Staff engineer review'}}</div></div>
@@ -1644,7 +1743,7 @@ function renderExecutiveSummary() {{
     html += `<div class="grid-section"><h3>All Unique Strategies (deduped)</h3>
     <table><thead><tr>
         <th></th><th>Strat ID</th><th>Title</th><th>Source RFE</th><th>Priority</th>
-        <th>F</th><th>T</th><th>S</th><th>A</th><th>Score</th><th>Verdict</th><th>Attention</th><th>Run</th>
+        <th>F</th><th>T</th><th>S</th><th>A</th><th>Score</th><th>Verdict</th><th>Attention</th><th>SME</th><th>Iter</th><th>Run</th>
     </tr></thead><tbody>`;
     e.strategies.forEach((s, i) => {{
         const sc = s.scores;
@@ -1662,6 +1761,13 @@ function renderExecutiveSummary() {{
         const attentionHtml = s.needs_attention
             ? '<span style="color:#f85149;font-weight:600">&#9679; Yes</span>'
             : '<span style="color:#3fb950">&#10003;</span>';
+        const smeHtml = s.has_sme_input
+            ? '<span style="color:#3fb950" title="Has staff engineer / SME input">&#10003;</span>'
+            : '<span style="color:#d29922" title="No SME input (boilerplate only)">Empty</span>';
+        const it = refineIterations(s);
+        const iterHtml = it.approx
+            ? `<span style="color:#8b949e" title="Approximate: derived from pipeline run count; no instrumented refine_count">~${{it.value}}</span>`
+            : `<span title="Instrumented refine_count">${{it.value}}</span>`;
         html += `<tr class="clickable" onclick="toggleExecDetail(${{i}})">
             <td><span class="expand-icon" id="eicon-${{i}}">&#9654;</span></td>
             <td><strong>${{s.strat_id}}</strong></td>
@@ -1671,9 +1777,11 @@ function renderExecutiveSummary() {{
             ${{scoreCells}}
             <td class="${{verdictClass(s.recommendation)}}">${{verdictLabel(s.recommendation)}}</td>
             <td style="text-align:center">${{attentionHtml}}</td>
+            <td style="text-align:center">${{smeHtml}}</td>
+            <td style="text-align:center">${{iterHtml}}</td>
             <td style="font-size:12px;color:#6e7681">${{s.run_label}}</td>
         </tr>
-        <tr><td colspan="13" style="padding:0">
+        <tr><td colspan="15" style="padding:0">
             <div class="detail-panel" id="epanel-${{i}}">
                 <h2>${{s.strat_id}}: ${{s.title}}</h2>
                 <div class="label-bar">${{renderLabelBadges(s.labels || [])}}</div>
