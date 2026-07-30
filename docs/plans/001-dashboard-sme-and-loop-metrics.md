@@ -183,10 +183,12 @@ Files: `scripts/generate-dashboard.py`
 #### Task 3.2: Add loop count KPI card and table column
 
 - Add KPI card: "Avg Refine Iterations: N.N across K STRATs"
-- Use `refine_count` from frontmatter whenever the field is present (including an
-  explicit `0`); fall back to the pipeline-run count **only when the field is
-  absent** (`null`). See [ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md)
-  for the absent-vs-zero rule.
+- Use `refine_count` from frontmatter whenever extraction yields a valid
+  authoritative value (a non-boolean integer `>= 0`, including an explicit `0`);
+  fall back to the pipeline-run count **whenever extraction yields `null`** (the
+  field was absent or malformed). See
+  [ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md) for the
+  absent-vs-zero rule and the malformed-normalizes-to-null rule.
 - Add "Iterations" column to the per-strategy table
 - **Provenance:** mark fallback-derived counts as approximate (e.g. a `~` prefix
   or asterisk) so they are not read as instrumented counts. Only the fallback
@@ -206,10 +208,11 @@ Files: `scripts/generate-dashboard.py`
 - [ ] `refine_count` frontmatter field exists and increments only on a
       body-changing refine pass (a no-op pass does not increment), counting the
       rubric-pass pass itself (inclusive)
-- [ ] Extraction preserves absent-vs-zero: absent `refine_count` -> `null`
-      (fallback), explicit `0` -> authoritative
-- [ ] Pipeline-run counting works as fallback only when `refine_count` is absent,
-      using baseline `max(0, distinct_runs - 1)`
+- [ ] Extraction preserves absent-vs-zero and fails closed: absent OR malformed
+      (non-integer/boolean/negative) `refine_count` -> `null` (fallback), explicit
+      `0` -> authoritative, valid non-boolean int `>= 0` -> authoritative
+- [ ] Pipeline-run counting works as fallback whenever extraction yields `null`
+      (absent or malformed), using baseline `max(0, distinct_runs - 1)`
 - [ ] Fallback-derived iteration counts are visually marked as approximate
       (instrumented counts render plain)
 - [ ] Unit tests pass for SME Input detection

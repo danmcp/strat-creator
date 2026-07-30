@@ -57,19 +57,22 @@ pipeline-run count as a fallback**:
    (non-integer, boolean, or negative) is **not** trusted: it normalizes to
    `null` and triggers the fallback, exactly as an absent field does, so a
    corrupt field can never fabricate an authoritative count.
-3. The pipeline-run fallback applies **only when the field is absent** (`null`).
+3. The pipeline-run fallback applies **whenever extraction yields `null`** - that
+   is, whenever the field is absent *or* malformed (see point 2). Authoritative
+   status is reserved for a valid non-boolean integer `>= 0` (including `0`).
    Fallback iterations = `max(0, (distinct pipeline runs containing the
    strat_id) - 1)` - the initial run is the creation baseline, not a refine
    iteration. This value is approximate (CI-run-derived) and MUST be labeled as
    such (see the provenance rule below).
 
-**Precedence rule: frontmatter wins whenever the field is present, including a
-value of `0`.** The two sources can disagree; the authoritative counter is
-preferred because it measures the intended concept (refine iterations) rather
-than a proxy (CI runs). An explicit `0` is a real measurement (the strategy
-reached rubric-pass with no productive refine) and is not the same as a missing
-field; only a missing field triggers the fallback, which exists solely to give a
-best-effort number for strategies predating the instrumentation.
+**Precedence rule: frontmatter wins whenever it yields a valid authoritative
+value (a non-boolean integer `>= 0`, including `0`).** The two sources can
+disagree; the authoritative counter is preferred because it measures the intended
+concept (refine iterations) rather than a proxy (CI runs). An explicit `0` is a
+real measurement (the strategy reached rubric-pass with no productive refine) and
+is not the same as a missing or malformed field; extraction yielding `null`
+(absent or malformed) is what triggers the fallback, which exists solely to give
+a best-effort number for strategies predating the instrumentation.
 
 **Increment rule: count productive iterations, not attempts.** `refine_count`
 increments only when a pass changes the body, not on every invocation of the
