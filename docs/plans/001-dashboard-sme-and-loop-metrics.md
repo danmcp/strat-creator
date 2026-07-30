@@ -51,13 +51,16 @@ In `scripts/generate-dashboard.py`:
 - **Rubric-pass predicate (define before coding):** a STRAT is rubric-pass when
   `is_approve(recommendation)` is true, i.e. `recommendation` is `approve` or
   `approved` (see `is_approve()` in `scripts/extract-pipeline-data.py:117`).
-  This is equivalent to the strategy carrying the `strat-creator-rubric-pass`
-  label, which `artifact_utils.compute_strat_labels()` derives from
-  `recommendation == "approve"`. Reuse the shared `is_approve()` predicate (import
-  or mirror it) rather than inlining `recommendation == "approve"`, so the KPI
-  cannot drift from the label logic. Note the existing minor inconsistency:
-  `is_approve()` also accepts `approved` while the label check uses only
-  `approve` - align on `is_approve()` and cover both in the fixture.
+  Use `is_approve()` as the single authoritative predicate for this KPI (import
+  it rather than inlining `recommendation == "approve"`), so the KPI cannot drift.
+  Note that this is **not** currently identical to the `strat-creator-rubric-pass`
+  label: `artifact_utils.compute_strat_labels()` derives the label from
+  `recommendation == "approve"` only, so a STRAT with `recommendation: approved`
+  satisfies `is_approve()` but does not carry the label. These two paths must be
+  reconciled to one predicate; until they are, `is_approve()` is the broader and
+  correct definition for the KPI, and aligning `compute_strat_labels()` onto
+  `is_approve()` is the follow-up that makes them equivalent. Cover both `approve`
+  and `approved` in the fixture.
 - Count STRATs where `is_approve(recommendation)` is true AND `has_sme_input`
   is false.
 - Add KPI card to Executive Summary: "N of M rubric-pass STRATs had empty SME Input (X%)"
@@ -107,12 +110,15 @@ counted (it is a productive refine). `refine_count` is the number of productive
 passes up to and including the pass that achieves rubric-pass. Tests must assert
 this inclusive definition (matches ADR-0001).
 
-Increment as the final step, reading the current value from the file's
-frontmatter (`current_refine_count`). Placeholders below are shell variables, not
-redirections, so the command is copy-safe:
+Increment as the final step. Read the current value from the file's frontmatter
+first - do not assume it is set. An unset shell variable evaluates to `0` in
+`$(( ))`, so skipping the read makes every pass write `1` instead of
+incrementing. Read the raw value, map absent (or `null`) to `0`, then increment:
 
 ```bash
 # only after confirming this pass rewrote body content
+current_refine_count=$(python3 scripts/frontmatter.py read "$task_path" \
+  | python3 -c 'import sys,json; print(json.load(sys.stdin).get("refine_count") or 0)')
 python3 scripts/frontmatter.py set "$task_path" \
   "refine_count=$((current_refine_count + 1))"
 ```
@@ -122,6 +128,10 @@ state. Increment it as the last step, after the body is written. If the incremen
 fails, leave it - the result is an undercount by one (never an overcount), which
 the next refine corrects and which the approximate-count handling already
 tolerates. Do not re-run the (expensive) refine pass just to fix the counter.
+(If an implementer wants to close the crash window entirely, the body and
+`refine_count` live in the same file, so both can be written in a single file
+replacement - no rollback or reconciliation machinery is warranted for a
+best-effort metric.)
 
 Files: `.claude/skills/strategy-refine/SKILL.md`
 
@@ -137,6 +147,11 @@ output by `extract_strategy()`. Preserve the absent-vs-zero distinction: emit
 `refine_count: null` when the field is absent from the strategy's frontmatter and
 the integer value (including `0`) when it is present (see
 [ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md)).
+
+Validate the value: a valid `refine_count` is an integer `>= 0`. Treat a
+malformed value (non-integer or negative, e.g. from a hand-edited file) as if
+the field were absent - emit `null` so it falls back rather than corrupting the
+metric. Assert this in the fixture.
 
 Files: `scripts/extract-pipeline-data.py`
 
@@ -197,7 +212,7 @@ Files: `scripts/generate-dashboard.py`
 | `scripts/extract-pipeline-data.py` | Add `has_sme_input` parser and `refine_count` extraction |
 | `scripts/generate-dashboard.py` | Add KPI cards, table columns, run-count logic |
 | `.claude/skills/strategy-refine/SKILL.md` | Increment `refine_count` after refinement |
-| `tests/` | Unit tests for `has_sme_input()` |
+| `tests/` | Contract tests for every metric acceptance criterion: `has_sme_input()`, rubric-pass predicate mapping (approve/approved/revise/reject), inclusive productive-pass counting, absent-vs-zero extraction (incl. malformed -> null), fallback selection, and provenance marking |
 
 ## Effort Estimate
 

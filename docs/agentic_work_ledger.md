@@ -175,12 +175,23 @@ Append discoveries here.
 
 ## Evidence
 
-Required before moving to `done/` (satisfies the "no success without evidence" goal):
+The evidence gate depends on where the task is going (satisfies the "no success
+without evidence" goal):
 
-- **Acceptance criteria results:** each item above marked pass/fail with a note.
+To move to `done/`, all of the following are required:
+
+- **Acceptance criteria results:** every item above marked pass with a note.
 - **Commands and output:** the exact commands run and their key output (tests, build, lint).
 - **Artifacts:** paths to produced files, logs, or PR/commit links.
-- **Reviewer sign-off:** who verified the work, or "pending".
+- **Reviewer sign-off:** a named reviewer who verified the work. "pending" is not
+  allowed for `done/` - a task with unverified work is not done.
+
+To move to `blocked/`, record instead:
+
+- **Blocker:** what is blocking progress and what would unblock it.
+- **Evidence so far:** whatever criteria results, commands, and artifacts exist
+  at the point of blocking. The full success gate above does not apply - blocked
+  work is incomplete by definition.
 ```
 ---
 
@@ -282,7 +293,8 @@ Next:
 6. Record discoveries
 7. Create bug files when needed
 8. Update ADRs if decisions are made
-9. Complete the Evidence section, then move the task to done/ (or to blocked/)
+9. Complete the Evidence section for the target state (full success gate for
+   done/, blocker + partial evidence for blocked/), then move the task there
 10. Update PLAN.md
 
 ---
@@ -317,10 +329,11 @@ Multiple agents can operate on the ledger at once. This doc does not mandate a
 single locking mechanism - the right one depends on your execution model - but
 these invariants hold:
 
-- **One agent per task.** Claiming a task means moving it into `current/` and
-  recording the claim before work starts. In a push-based setup (each agent in
-  its own clone) a double-claim surfaces as a merge conflict; on a shared
-  filesystem a bare move is not atomic across processes, so use an explicit lock.
+- **One agent per task.** Claiming a task means moving it from
+  `docs/tasks/pending/<name>.md` to `docs/tasks/current/<name>.md` and recording
+  the claim before work starts. In a push-based setup (each agent in its own
+  clone) a double-claim surfaces as a merge conflict; on a shared filesystem a
+  bare move is not atomic across processes, so use an explicit lock.
   Pick whatever matches your setup - the invariant is that no two agents work the
   same task.
 - **Reference tasks by canonical path** (`docs/tasks/<state>/<name>.md`) so state

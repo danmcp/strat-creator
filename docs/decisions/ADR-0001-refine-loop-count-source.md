@@ -41,8 +41,11 @@ to history, and run-inference is retroactive but noisy.
 Use a **two-tier source with frontmatter as the authoritative signal and
 pipeline-run count as a fallback**:
 
-1. Add `refine_count` (integer, default `0`) to the strat-task frontmatter
-   schema. The `strategy-refine` skill increments it **only when a refine pass
+1. Add `refine_count` (integer, optional, **no materialized default**) to the
+   strat-task frontmatter schema. A default of `0` would erase the absent-vs-zero
+   distinction below by making legacy strategies look instrumented, so absence
+   must stay absent (see point 2). The `strategy-refine` skill increments it
+   **only when a refine pass
    actually changes the strategy body** - a no-op pass (no new input, nothing
    rewritten) does not increment.
 2. The dashboard treats `refine_count` as authoritative whenever the field is
