@@ -48,19 +48,35 @@ Files: `scripts/extract-pipeline-data.py`
 
 In `scripts/generate-dashboard.py`:
 
-- Count STRATs where `recommendation` is approve AND `has_sme_input` is false
-- Add KPI card to Executive Summary: "N of M approved STRATs had empty SME Input (X%)"
+- **Rubric-pass predicate (define before coding):** a STRAT is rubric-pass when
+  `is_approve(recommendation)` is true, i.e. `recommendation` is `approve` or
+  `approved` (see `is_approve()` in `scripts/extract-pipeline-data.py:117`).
+  This is equivalent to the strategy carrying the `strat-creator-rubric-pass`
+  label, which `artifact_utils.compute_strat_labels()` derives from
+  `recommendation == "approve"`. Reuse the shared `is_approve()` predicate (import
+  or mirror it) rather than inlining `recommendation == "approve"`, so the KPI
+  cannot drift from the label logic. Note the existing minor inconsistency:
+  `is_approve()` also accepts `approved` while the label check uses only
+  `approve` - align on `is_approve()` and cover both in the fixture.
+- Count STRATs where `is_approve(recommendation)` is true AND `has_sme_input`
+  is false.
+- Add KPI card to Executive Summary: "N of M rubric-pass STRATs had empty SME Input (X%)"
 - Add indicator column to the per-strategy table
 
 Files: `scripts/generate-dashboard.py`
 
 #### Task 1.3: Unit tests for `has_sme_input`
 
-Test cases:
+Test cases for `has_sme_input`:
 - Empty section (boilerplate only) -> false
 - Section with real content -> true
 - Missing section entirely -> false
 - Boilerplate plus additional text -> true
+
+Rubric-pass predicate fixture (Task 1.2): assert `recommendation` values
+`approve` and `approved` are counted as rubric-pass, and `revise`, `reject`, and
+empty are not. This locks the mapping between the rubric-pass state and its
+source JSON representation.
 
 Files: `tests/`
 
@@ -68,7 +84,12 @@ Files: `tests/`
 
 #### Task 2.1: Add `refine_count` to strat-task frontmatter schema
 
-Add `refine_count` (integer, default 0) to the optional fields in the strat-task schema.
+Add `refine_count` (integer, optional) to the strat-task schema. When absent it
+must remain distinguishable from an explicit `0` downstream (absent = never
+instrumented -> fallback; `0` = instrumented, zero productive refines -> authoritative;
+see [ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md)). If the schema
+layer coerces a missing field to a default, extraction (Task 2.3) must read
+presence from the raw frontmatter so the distinction survives.
 
 Files: `scripts/frontmatter.py`
 
@@ -81,10 +102,27 @@ is the regression signal for RHAIFIRST-325, whose fix makes no-input passes
 no-ops. If the counter bumped on every invocation it would keep climbing after
 325 is fixed and stop being a useful convergence signal.
 
+**Final-pass inclusion:** a body-changing pass that reaches rubric-pass IS
+counted (it is a productive refine). `refine_count` is the number of productive
+passes up to and including the pass that achieves rubric-pass. Tests must assert
+this inclusive definition (matches ADR-0001).
+
+Increment as the final step, reading the current value from the file's
+frontmatter (`current_refine_count`). Placeholders below are shell variables, not
+redirections, so the command is copy-safe:
+
 ```bash
 # only after confirming this pass rewrote body content
-python3 scripts/frontmatter.py set <path> refine_count=<n+1>
+python3 scripts/frontmatter.py set "$task_path" \
+  "refine_count=$((current_refine_count + 1))"
 ```
+
+**Recoverability:** the body rewrite and the `refine_count` increment target the
+same file and must be committed together. Write the refined body, then increment
+the counter, then verify both landed before reporting success. If either the
+write or the verification fails, redo the pass rather than leaving body and
+counter diverged. The safe failure direction is an undercount (counter behind
+body), never an overcount.
 
 Files: `.claude/skills/strategy-refine/SKILL.md`
 
@@ -95,7 +133,11 @@ then.
 
 #### Task 2.3: Include `refine_count` in extracted data
 
-Read `refine_count` from frontmatter and include it in the per-strategy dict output by `extract_strategy()`.
+Read `refine_count` from frontmatter and include it in the per-strategy dict
+output by `extract_strategy()`. Preserve the absent-vs-zero distinction: emit
+`refine_count: null` when the field is absent from the strategy's frontmatter and
+the integer value (including `0`) when it is present (see
+[ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md)).
 
 Files: `scripts/extract-pipeline-data.py`
 
@@ -103,15 +145,28 @@ Files: `scripts/extract-pipeline-data.py`
 
 #### Task 3.1: Count pipeline runs per STRAT (immediate fallback)
 
-In `generate-dashboard.py`, count how many different pipeline runs contain the same `strat_id` across all loaded runs. This provides a CI-only iteration signal from existing data with no pipeline changes.
+In `generate-dashboard.py`, count how many distinct pipeline runs contain the
+same `strat_id` across all loaded runs. Fallback iterations =
+`max(0, distinct_runs - 1)` - the initial run is the creation baseline, not a
+refine iteration. This provides a CI-only iteration signal from existing data
+with no pipeline changes, and is **approximate** (it conflates CI re-runs and
+retries with real refine loops). Matches the fallback definition in
+[ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md).
 
 Files: `scripts/generate-dashboard.py`
 
 #### Task 3.2: Add loop count KPI card and table column
 
 - Add KPI card: "Avg Refine Iterations: N.N across K STRATs"
-- Use `refine_count` from frontmatter when available, fall back to pipeline-run count
-- Add "Iterations" column to per-strategy table
+- Use `refine_count` from frontmatter whenever the field is present (including an
+  explicit `0`); fall back to the pipeline-run count **only when the field is
+  absent** (`null`). See [ADR-0001](../decisions/ADR-0001-refine-loop-count-source.md)
+  for the absent-vs-zero rule.
+- Add "Iterations" column to the per-strategy table
+- **Provenance (required):** each iteration count MUST show its source -
+  instrumented (`refine_count`) vs. CI-run-approximate (fallback) - e.g. a badge
+  or suffix, so an approximate count is never read as instrumented. This is a
+  binding cross-file contract with ADR-0001's provenance rule.
 
 Files: `scripts/generate-dashboard.py`
 
@@ -121,9 +176,18 @@ Files: `scripts/generate-dashboard.py`
 - [ ] Dashboard shows KPI card for average refine iterations
 - [ ] Per-strategy table has SME Input indicator column
 - [ ] Per-strategy table has iteration count column
+- [ ] Rubric-pass KPI uses the shared `is_approve()` predicate (not an inline
+      string compare) and a fixture locks the approve/approved/revise/reject
+      mapping
 - [ ] `refine_count` frontmatter field exists and increments only on a
-      body-changing refine pass (a no-op pass does not increment)
-- [ ] Pipeline-run counting works as fallback for STRATs without `refine_count`
+      body-changing refine pass (a no-op pass does not increment), counting the
+      rubric-pass pass itself (inclusive)
+- [ ] Extraction preserves absent-vs-zero: absent `refine_count` -> `null`
+      (fallback), explicit `0` -> authoritative
+- [ ] Pipeline-run counting works as fallback only when `refine_count` is absent,
+      using baseline `max(0, distinct_runs - 1)`
+- [ ] Iteration counts show provenance (instrumented vs. CI-approximate), with a
+      test covering source selection and fallback
 - [ ] Unit tests pass for SME Input detection
 - [ ] `make test` passes
 

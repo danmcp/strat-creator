@@ -172,6 +172,15 @@ Current
 ## Notes
 
 Append discoveries here.
+
+## Evidence
+
+Required before moving to `done/` (satisfies the "no success without evidence" goal):
+
+- **Acceptance criteria results:** each item above marked pass/fail with a note.
+- **Commands and output:** the exact commands run and their key output (tests, build, lint).
+- **Artifacts:** paths to produced files, logs, or PR/commit links.
+- **Reviewer sign-off:** who verified the work, or "pending".
 ```
 ---
 
@@ -238,7 +247,8 @@ Negative:
 
 # Session Log
 
-Agents should append activity to a shared session log.
+Agents append activity to the session log following the append/per-agent rules
+in Concurrency and Shared State, so concurrent writes never clobber each other.
 
 Example:
 
@@ -266,12 +276,13 @@ Next:
 1. Read AGENTS.md
 2. Read PLAN.md
 3. Select a task from pending/
-4. Move task into current/
+4. Claim the task atomically: move it into current/ and commit before working
+   (see Concurrency and Shared State)
 5. Execute work
 6. Record discoveries
 7. Create bug files when needed
 8. Update ADRs if decisions are made
-9. Move task to done/ or blocked/
+9. Complete the Evidence section, then move the task to done/ (or to blocked/)
 10. Update PLAN.md
 
 ---
@@ -297,6 +308,24 @@ Reviewer Agent:
 - Verifies acceptance criteria
 - Confirms tests
 - Rejects incomplete work
+
+---
+
+# Concurrency and Shared State
+
+Multiple agents operate on the ledger at once, so every shared-state update
+follows one concurrency model to avoid lost updates and double-claims:
+
+- **Claim tasks atomically.** Claiming a task is a single move
+  (`tasks/pending/foo.md` -> `tasks/current/foo.md`) committed before work
+  starts. The move succeeds or fails as a whole; a task already claimed by
+  another agent surfaces as a conflict, not a silent double-claim.
+- **Use canonical paths.** Always reference a task by its full
+  `docs/tasks/<state>/<name>.md` path so state (the directory) is unambiguous.
+- **Do not co-write one shared log.** Either give each agent its own
+  `notes/session-log-<agent>.md`, or append to the shared log as separate,
+  append-only commits (one entry per commit) so a merge never clobbers another
+  agent's entry.
 
 ---
 

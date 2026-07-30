@@ -45,15 +45,24 @@ pipeline-run count as a fallback**:
    schema. The `strategy-refine` skill increments it **only when a refine pass
    actually changes the strategy body** - a no-op pass (no new input, nothing
    rewritten) does not increment.
-2. The dashboard uses `refine_count` when it is present and greater than zero.
-3. When `refine_count` is absent or zero, the dashboard falls back to the count
-   of distinct pipeline runs containing that `strat_id`.
+2. The dashboard treats `refine_count` as authoritative whenever the field is
+   **present, including an explicit `0`** (which means zero productive refine
+   passes). Extraction MUST preserve the distinction between absent and zero by
+   emitting `refine_count: null` when the field is absent from a strategy's
+   frontmatter and the integer value (including `0`) when it is present.
+3. The pipeline-run fallback applies **only when the field is absent** (`null`).
+   Fallback iterations = `max(0, (distinct pipeline runs containing the
+   strat_id) - 1)` - the initial run is the creation baseline, not a refine
+   iteration. This value is approximate (CI-run-derived) and MUST be labeled as
+   such (see the provenance rule below).
 
-**Precedence rule: frontmatter wins when present and non-zero.** The two sources
-can disagree; the authoritative counter is preferred because it measures the
-intended concept (refine iterations) rather than a proxy (CI runs). The fallback
-exists solely to give a best-effort number for strategies predating the
-instrumentation.
+**Precedence rule: frontmatter wins whenever the field is present, including a
+value of `0`.** The two sources can disagree; the authoritative counter is
+preferred because it measures the intended concept (refine iterations) rather
+than a proxy (CI runs). An explicit `0` is a real measurement (the strategy
+reached rubric-pass with no productive refine) and is not the same as a missing
+field; only a missing field triggers the fallback, which exists solely to give a
+best-effort number for strategies predating the instrumentation.
 
 **Increment rule: count productive iterations, not attempts.** `refine_count`
 increments only when a pass changes the body, not on every invocation of the
@@ -65,8 +74,15 @@ is precisely the set of passes that *do* rewrite content without reaching
 rubric-pass. (Trade-off: this measures productive iterations rather than total
 quota spent; a pass that runs but changes nothing is invisible to the count.)
 
-The dashboard should make the source visible (e.g. mark fallback-derived counts
-as approximate) so a run-count proxy is not mistaken for an instrumented count.
+**Final-pass inclusion:** a body-changing pass that *reaches* rubric-pass is
+counted - it is a productive refine pass. `refine_count` therefore equals the
+number of productive refine passes up to and including the one that achieves
+rubric-pass. The same inclusive definition applies to the plan (Task 2.2) and to
+the tests.
+
+**Provenance rule (mandatory):** the dashboard MUST display the source of each
+iteration count - instrumented (`refine_count`) versus CI-run-approximate
+(fallback) - so a run-count proxy is never mistaken for an instrumented count.
 
 ## Consequences
 
