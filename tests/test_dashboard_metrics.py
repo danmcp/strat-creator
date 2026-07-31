@@ -307,3 +307,83 @@ class TestEmptySmeRubricPass:
         # A dict with no has_sme_input key at all is also unknown.
         strategies = [{"recommendation": "approve"}]
         assert dashboard.empty_sme_rubric_pass(strategies) == (0, 0)
+
+
+# ─── dashboard: per-run trend aggregation ────────────────────────────────────
+
+
+class TestComputeMetricTrends:
+
+    def _run(self, strategies):
+        return {"strategies": strategies}
+
+    def test_sme_rate_and_count_per_run(self):
+        run = self._run([
+            {"recommendation": "approve", "has_sme_input": False},   # empty
+            {"recommendation": "approved", "has_sme_input": True},   # known, not empty
+            {"recommendation": "revise", "has_sme_input": False},    # not rubric-pass
+        ])
+        dashboard.compute_metric_trends([run])
+        assert run["sme_empty_count"] == 1
+        assert run["sme_rubric_known"] == 2
+        assert run["sme_empty_rate"] == 50
+
+    def test_sme_rate_none_when_no_known_rubric_pass(self):
+        # No rubric-pass STRAT with known SME status -> gap, not a misleading 0%.
+        run = self._run([
+            {"recommendation": "revise", "has_sme_input": False},
+            {"recommendation": "approve", "has_sme_input": None},    # unknown
+        ])
+        dashboard.compute_metric_trends([run])
+        assert run["sme_rubric_known"] == 0
+        assert run["sme_empty_rate"] is None
+
+    def test_avg_refine_authoritative_only(self):
+        # Only instrumented refine_count contributes; absent is excluded (no
+        # fallback in the trend).
+        run = self._run([
+            {"refine_count": 2},
+            {"refine_count": 0},     # explicit zero counts
+            {"refine_count": None},  # un-instrumented -> excluded
+        ])
+        dashboard.compute_metric_trends([run])
+        assert run["avg_refine_iter"] == 1.0   # mean of [2, 0]
+        assert run["refine_instrumented_count"] == 2
+
+    def test_avg_refine_none_when_uninstrumented(self):
+        run = self._run([{"refine_count": None}, {"recommendation": "approve"}])
+        dashboard.compute_metric_trends([run])
+        assert run["avg_refine_iter"] is None
+        assert run["refine_instrumented_count"] == 0
+
+    def test_avg_refine_excludes_malformed(self):
+        # Malformed values normalize to null -> excluded, same as absent.
+        run = self._run([
+            {"refine_count": 4},
+            {"refine_count": -1},     # negative
+            {"refine_count": True},   # bool
+            {"refine_count": "3"},    # string
+        ])
+        dashboard.compute_metric_trends([run])
+        assert run["avg_refine_iter"] == 4.0
+        assert run["refine_instrumented_count"] == 1
+
+    def test_runs_computed_independently(self):
+        runs = [
+            self._run([{"recommendation": "approve", "has_sme_input": False,
+                        "refine_count": 1}]),
+            self._run([{"recommendation": "approve", "has_sme_input": True,
+                        "refine_count": 3}]),
+        ]
+        dashboard.compute_metric_trends(runs)
+        assert runs[0]["sme_empty_rate"] == 100
+        assert runs[0]["avg_refine_iter"] == 1.0
+        assert runs[1]["sme_empty_rate"] == 0
+        assert runs[1]["avg_refine_iter"] == 3.0
+
+    def test_empty_run_gets_null_fields(self):
+        run = self._run([])
+        dashboard.compute_metric_trends([run])
+        assert run["sme_empty_rate"] is None
+        assert run["avg_refine_iter"] is None
+        assert run["refine_instrumented_count"] == 0

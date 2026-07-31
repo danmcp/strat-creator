@@ -104,6 +104,37 @@ def empty_sme_rubric_pass(strategies):
     empty = [s for s in known if s.get("has_sme_input") is False]
     return len(empty), len(known)
 
+
+def compute_metric_trends(runs):
+    """Attach per-run SME and refine-iteration aggregates for the trend charts.
+
+    Both series are self-contained per run (no cross-run state):
+      - sme_empty_rate: percent of rubric-pass STRATs with a KNOWN SME status
+        that had empty SME input in that run; None when the run has no known
+        rubric-pass STRAT (plotted as a gap rather than a misleading 0%).
+      - avg_refine_iter: mean instrumented refine_count in that run. This trend
+        is authoritative-only: fallback (pipeline-run) estimates are deliberately
+        excluded so the line is a clean regression signal for RHAIFIRST-325 and
+        not polluted by CI churn. None when no STRAT in the run is instrumented.
+        The Executive Summary KPI keeps the blended (authoritative + fallback)
+        snapshot; the trend and the summary answer different questions. See
+        docs/plans/002.
+
+    Mutates each run dict in place. Call after compute_deltas().
+    """
+    for run in runs:
+        strategies = run.get("strategies", [])
+        empty, known = empty_sme_rubric_pass(strategies)
+        run["sme_empty_count"] = empty
+        run["sme_rubric_known"] = known
+        run["sme_empty_rate"] = pct(empty, known) if known else None
+
+        vals = [valid_refine_count(s.get("refine_count")) for s in strategies]
+        vals = [v for v in vals if v is not None]
+        run["avg_refine_iter"] = round(sum(vals) / len(vals), 1) if vals else None
+        run["refine_instrumented_count"] = len(vals)
+
+
 def health_color(rate):
     if rate >= 70:
         return "#3fb950"
@@ -1009,6 +1040,16 @@ tr.clickable {{ cursor: pointer; }}
         <canvas id="chart-avg-score"></canvas>
     </div>
     <div class="chart-card">
+        <h3>Empty SME Input Rate Over Time</h3>
+        <p style="color:#6e7681;font-size:12px;margin-bottom:8px">Percent of rubric-pass STRATs (known SME status) that passed with empty Staff Engineer / SME Input. Runs with no known rubric-pass STRAT are shown as gaps.</p>
+        <canvas id="chart-sme-empty"></canvas>
+    </div>
+    <div class="chart-card">
+        <h3>Avg Refine Iterations Over Time</h3>
+        <p style="color:#6e7681;font-size:12px;margin-bottom:8px">Mean instrumented refine_count per run (authoritative only; fallback estimates excluded). Regression signal for refine-loop convergence. Runs with no instrumented STRAT are shown as gaps.</p>
+        <canvas id="chart-refine-iter"></canvas>
+    </div>
+    <div class="chart-card">
         <h3>Cost Per Run</h3>
         <p style="color:#6e7681;font-size:12px;margin-bottom:8px">Total USD per run, broken down by phase (create / refine / review).</p>
         <canvas id="chart-cost"></canvas>
@@ -1391,12 +1432,37 @@ function renderOverviewKPIs() {{
     const totalStrats = costedRuns.reduce((s, r) => s + r.reviewed, 0);
     const avgPerStrat = totalStrats > 0 ? (totalSpend / totalStrats).toFixed(2) : '—';
 
+    // Empty SME Input (latest run): count + rate of rubric-pass STRATs with
+    // known SME status that shipped empty. Up (more empty) is worse -> red.
+    const smeEmpty = cur ? (cur.sme_empty_count || 0) : 0;
+    const smeKnown = cur ? (cur.sme_rubric_known || 0) : 0;
+    const smePct = smeKnown > 0 ? Math.round(100 * smeEmpty / smeKnown) : 0;
+    const smeColor = smeEmpty > 0 ? '#d29922' : '#3fb950';
+    let smeDelta = '';
+    if (cur && prev && cur.sme_empty_count != null && prev.sme_empty_count != null) {{
+        const d = cur.sme_empty_count - prev.sme_empty_count;
+        smeDelta = d === 0 ? '<span style="color:#6e7681">→ no change</span>'
+            : d > 0 ? `<span style="color:#f85149">↑ ${{d}}</span>`
+            : `<span style="color:#3fb950">↓ ${{Math.abs(d)}}</span>`;
+    }}
+    // Avg refine iterations (latest run): authoritative-only. Direction is not
+    // inherently good/bad, so the delta is neutral gray.
+    const avgRefine = cur && cur.avg_refine_iter != null ? cur.avg_refine_iter : null;
+    const avgRefineHtml = avgRefine != null ? avgRefine : '—';
+    const refineInstr = cur ? (cur.refine_instrumented_count || 0) : 0;
+    let refineDelta = '';
+    if (cur && prev && cur.avg_refine_iter != null && prev.avg_refine_iter != null) {{
+        const d = Math.round(10 * (cur.avg_refine_iter - prev.avg_refine_iter)) / 10;
+        refineDelta = d === 0 ? '<span style="color:#6e7681">→ no change</span>'
+            : `<span style="color:#8b949e">${{d > 0 ? '↑' : '↓'}} ${{Math.abs(d)}}</span>`;
+    }}
+
     let html = `<div class="hero">
         <div class="hero-statement" style="color:${{heroColor}}">${{cur ? cur.approved : 0}} of ${{cur ? cur.reviewed : 0}} strategies approved (${{rate}}%)</div>
         <div class="hero-delta">vs previous run: ${{deltaArrow}}</div>
         <div class="hero-sub">${{RUNS.length}} pipeline run(s) | Latest: ${{cur ? cur.label : 'none'}}</div>
     </div>`;
-    html += `<div class="kpi-grid" style="grid-template-columns: repeat(7, 1fr);">
+    html += `<div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));">
         <div class="kpi"><div class="kpi-value" style="color:#58a6ff">${{RUNS.length}}</div><div class="kpi-label">Pipeline Runs</div><div class="kpi-detail">${{RUNS.reduce((a, r) => a + r.reviewed, 0)}} strategies total</div></div>
         <div class="kpi"><div class="kpi-value" style="color:#f0f6fc">${{cur ? cur.reviewed : 0}}</div><div class="kpi-label">Strategies Reviewed</div><div class="kpi-detail">${{deltaHtml(cur, prev, 'reviewed', false)}}</div></div>
         <div class="kpi"><div class="kpi-value" style="color:${{heroColor}}">${{rate}}%</div><div class="kpi-label">Approval Rate</div><div class="kpi-detail">${{deltaHtml(cur, prev, 'approval_rate', true)}}</div></div>
@@ -1404,6 +1470,8 @@ function renderOverviewKPIs() {{
         <div class="kpi"><div class="kpi-value" style="color:#f85149">${{cur ? cur.needs_attention || 0 : 0}}</div><div class="kpi-label">Needs Attention</div><div class="kpi-detail">${{cur && cur.needs_attention > 0 ? 'Human review required' : 'All clear'}}</div></div>
         <div class="kpi"><div class="kpi-value" style="color:${{healthColor(weakRate)}}">${{weakRate}}%</div><div class="kpi-label">Weakest: ${{weakDim.charAt(0).toUpperCase() + weakDim.slice(1)}}</div><div class="kpi-detail">Strongest: ${{strongDim.charAt(0).toUpperCase() + strongDim.slice(1)}} (${{strongRate}}%)</div></div>
         <div class="kpi"><div class="kpi-value" style="color:#bc8cff">$${{totalSpend.toFixed(0)}}</div><div class="kpi-label">Total Spend</div><div class="kpi-detail">$${{avgPerStrat}}/strategy (${{costedRuns.length}} runs)</div></div>
+        <div class="kpi"><div class="kpi-value" style="color:${{smeColor}}">${{smeEmpty}}</div><div class="kpi-label">Empty SME Input</div><div class="kpi-detail">${{smePct}}% of ${{smeKnown}} rubric-pass ${{smeDelta}}</div></div>
+        <div class="kpi"><div class="kpi-value" style="color:#58a6ff">${{avgRefineHtml}}</div><div class="kpi-label">Avg Refine Iterations</div><div class="kpi-detail">${{refineInstr}} instrumented ${{refineDelta}}</div></div>
     </div>`;
     el.innerHTML = html;
 }}
@@ -2398,6 +2466,70 @@ function initCharts() {{
         }},
     }}));
 
+    // Empty SME Input rate trend (null runs render as gaps, not 0%)
+    _chartInstances.push(new Chart(document.getElementById('chart-sme-empty'), {{
+        type: 'line',
+        data: {{
+            labels,
+            datasets: [{{
+                label: 'Empty SME %',
+                data: RUNS.map(r => r.sme_empty_rate),
+                borderColor: '#d29922',
+                backgroundColor: 'rgba(210,153,34,0.1)',
+                fill: true,
+                tension: 0.3,
+                spanGaps: false,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#d29922',
+            }}]
+        }},
+        options: {{
+            responsive: true,
+            plugins: {{ legend: {{ display: false }} }},
+            scales: {{
+                y: {{
+                    min: 0, max: 100,
+                    ticks: {{ callback: v => v + '%' }},
+                    grid: {{ color: '#161b22' }},
+                }},
+                x: {{ grid: {{ display: false }} }},
+            }},
+        }},
+    }}));
+
+    // Avg refine iterations trend (authoritative-only; gaps where uninstrumented)
+    _chartInstances.push(new Chart(document.getElementById('chart-refine-iter'), {{
+        type: 'line',
+        data: {{
+            labels,
+            datasets: [{{
+                label: 'Avg Refine Iterations',
+                data: RUNS.map(r => r.avg_refine_iter),
+                borderColor: '#58a6ff',
+                backgroundColor: 'rgba(88,166,255,0.1)',
+                fill: true,
+                tension: 0.3,
+                spanGaps: false,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: '#58a6ff',
+            }}]
+        }},
+        options: {{
+            responsive: true,
+            plugins: {{ legend: {{ display: false }} }},
+            scales: {{
+                y: {{
+                    min: 0,
+                    ticks: {{ precision: 1 }},
+                    grid: {{ color: '#161b22' }},
+                }},
+                x: {{ grid: {{ display: false }} }},
+            }},
+        }},
+    }}));
+
     // Cost per run (stacked bar: create / refine / review)
     const costRuns = RUNS.filter(r => r.cost && r.cost.total_usd > 0);
     if (costRuns.length > 0) {{
@@ -2678,6 +2810,7 @@ def main():
 
     print(f"Found {len(runs)} run(s)")
     compute_deltas(runs)
+    compute_metric_trends(runs)
     exec_summary = compute_executive_summary(runs)
     print(f"Executive summary: {exec_summary['total']} unique strategies "
           f"({exec_summary['approved']} approved, {exec_summary['needs_attention']} need attention)")
