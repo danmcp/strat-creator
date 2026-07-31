@@ -89,14 +89,20 @@ def refine_iterations(refine_count, pipeline_run_count):
 
 
 def empty_sme_rubric_pass(strategies):
-    """Return (empty_sme_count, rubric_pass_total) for the SME Input KPI.
+    """Return (empty_sme_count, rubric_pass_known) for the SME Input KPI.
 
     Rubric-pass is defined solely by is_approve(recommendation) - never the
     strat-creator-rubric-pass label (see docs/plans/001, Task 1.2).
+
+    has_sme_input may be None for runs that predate SME instrumentation; those
+    are unknown, not empty, so they are excluded from both the numerator and the
+    denominator. The denominator is therefore rubric-pass STRATs with a KNOWN
+    SME status, keeping the reported percentage honest.
     """
     rubric_pass = [s for s in strategies if is_approve(s.get("recommendation"))]
-    empty = [s for s in rubric_pass if not s.get("has_sme_input")]
-    return len(empty), len(rubric_pass)
+    known = [s for s in rubric_pass if s.get("has_sme_input") is not None]
+    empty = [s for s in known if s.get("has_sme_input") is False]
+    return len(empty), len(known)
 
 def health_color(rate):
     if rate >= 70:
@@ -499,7 +505,10 @@ def load_run_from_json(run_dir, config):
             "size": cfg.get("size") or s.get("size") or "—",
             "baseline": cfg.get("baseline", False),
             "cross_component": False,
-            "has_sme_input": s.get("has_sme_input", False),
+            # None (absent) means the run predates SME instrumentation - keep it
+            # distinct from an explicit False so it can be excluded from the KPI
+            # rather than miscounted as empty. See CodeRabbit PR #42.
+            "has_sme_input": s.get("has_sme_input"),
             "refine_count": valid_refine_count(s.get("refine_count")),
             "recommendation": s.get("recommendation", "—"),
             "needs_attention": s.get("needs_attention", False),
@@ -1218,8 +1227,13 @@ function filterByDays(runs, days) {{
 // ─── Dry-run filtering ─────────────────────────────────────────────────────
 function recomputeExec(runs) {{
     // Distinct pipeline runs per strat_id - fallback signal for refine iterations.
+    // Count across ALL loaded runs, not the date-filtered view, so the count
+    // does not shrink when older runs fall outside the selected range (the
+    // contract is "distinct runs across all loaded runs"). `runs` still governs
+    // which strategies are displayed.
+    const countSource = (typeof ALL_RUNS !== 'undefined' && ALL_RUNS) ? ALL_RUNS : runs;
     const runCounts = {{}};
-    for (const run of runs) {{
+    for (const run of countSource) {{
         const ids = new Set(run.strategies.map(s => s.strat_id));
         ids.forEach(id => {{ runCounts[id] = (runCounts[id] || 0) + 1; }});
     }}
@@ -1271,8 +1285,11 @@ function recomputeExec(runs) {{
     strategies.forEach(s => {{ if (s.source_rfe) rfeKeys.add(s.source_rfe); }});
     skipped.forEach(s => {{ if (s.rfe_key) rfeKeys.add(s.rfe_key); }});
     // SME Input KPI: rubric-pass STRATs (is_approve only) with empty SME Input.
+    // has_sme_input is null for un-instrumented historical runs - unknown, not
+    // empty - so exclude it from both numerator and denominator.
     const rubricPassStrats = strategies.filter(s => isApprove(s.recommendation));
-    const smeEmpty = rubricPassStrats.filter(s => !s.has_sme_input).length;
+    const smeKnown = rubricPassStrats.filter(s => s.has_sme_input === true || s.has_sme_input === false);
+    const smeEmpty = smeKnown.filter(s => s.has_sme_input === false).length;
     // Refine iterations: authoritative refine_count else pipeline-run fallback.
     const iters = strategies.map(refineIterations);
     const avgRefine = iters.length > 0
@@ -1285,7 +1302,7 @@ function recomputeExec(runs) {{
         approval_rate: pct(approved, totalReviewed),
         revision_rate: pct(revise, totalReviewed),
         avg_total_score: avgScore, dimensions, strategies, skipped,
-        sme_empty: smeEmpty, rubric_pass_total: rubricPassStrats.length,
+        sme_empty: smeEmpty, rubric_pass_total: smeKnown.length,
         avg_refine: avgRefine,
         weakest_dim: total > 0 ? dims.reduce((a, b) => dimensions[a].rate < dimensions[b].rate ? a : b) : '—',
         strongest_dim: total > 0 ? dims.reduce((a, b) => dimensions[a].rate > dimensions[b].rate ? a : b) : '—',
@@ -1761,9 +1778,11 @@ function renderExecutiveSummary() {{
         const attentionHtml = s.needs_attention
             ? '<span style="color:#f85149;font-weight:600">&#9679; Yes</span>'
             : '<span style="color:#3fb950">&#10003;</span>';
-        const smeHtml = s.has_sme_input
+        const smeHtml = s.has_sme_input === true
             ? '<span style="color:#3fb950" title="Has staff engineer / SME input">&#10003;</span>'
-            : '<span style="color:#d29922" title="No SME input (boilerplate only)">Empty</span>';
+            : s.has_sme_input === false
+            ? '<span style="color:#d29922" title="No SME input (boilerplate only)">Empty</span>'
+            : '<span style="color:#6e7681" title="SME status unknown - run predates SME instrumentation">?</span>';
         const it = refineIterations(s);
         const iterHtml = it.approx
             ? `<span style="color:#8b949e" title="Approximate: derived from pipeline run count; no instrumented refine_count">~${{it.value}}</span>`

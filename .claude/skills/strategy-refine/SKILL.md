@@ -227,18 +227,29 @@ refine passes, and it is the regression signal for RHAIFIRST-325 (see ADR-0001).
 The count is inclusive: the body-changing pass that reaches rubric-pass still
 counts.
 
-Read the current value first (an unset or malformed field maps to `0`; do not
-assume it is set), then write the status and the incremented count in a single
-`frontmatter.py set` call so both land in one atomic file write:
+Read the current value first (do not assume it is set), then write the status and
+the incremented count in a single `frontmatter.py set` call so both land in one
+atomic file write. Fail closed: a malformed *field value* (non-integer, boolean,
+negative) maps to `0` so counting starts fresh, but a *read or parse failure*
+(command error, unreadable file, invalid JSON) must NOT reset a valid counter to
+`1` - detect the failed read and skip the increment instead, writing only the
+status:
 
 ```bash
 # only when this pass rewrote body content
 current_refine_count=$(python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py read \
     artifacts/strat-tasks/<filename>.md \
-  | python3 -c 'import sys,json; v=json.load(sys.stdin).get("refine_count"); print(v if isinstance(v,int) and not isinstance(v,bool) and v>=0 else 0)')
-python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/strat-tasks/<filename>.md \
-    status=Refined \
-    "refine_count=$((current_refine_count + 1))"
+  | python3 -c 'import sys,json; v=json.load(sys.stdin).get("refine_count"); print(v if isinstance(v,int) and not isinstance(v,bool) and v>=0 else 0)') \
+  || current_refine_count=""
+if [[ "$current_refine_count" =~ ^[0-9]+$ ]]; then
+    python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/strat-tasks/<filename>.md \
+        status=Refined \
+        "refine_count=$((current_refine_count + 1))"
+else
+    # read/parse failed - never reset a valid counter; record status only
+    python3 ${CLAUDE_SKILL_DIR}/scripts/frontmatter.py set artifacts/strat-tasks/<filename>.md \
+        status=Refined
+fi
 ```
 
 If this pass made no changes to the body, set only `status=Refined` and leave

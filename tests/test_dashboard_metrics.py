@@ -290,3 +290,20 @@ class TestEmptySmeRubricPass:
     def test_no_rubric_pass(self):
         strategies = [{"recommendation": "revise", "has_sme_input": False}]
         assert dashboard.empty_sme_rubric_pass(strategies) == (0, 0)
+
+    def test_unknown_sme_excluded_from_both(self):
+        # has_sme_input None (un-instrumented historical run) is unknown, not
+        # empty: excluded from numerator AND denominator.
+        strategies = [
+            {"recommendation": "approve", "has_sme_input": None},    # unknown -> excluded
+            {"recommendation": "approve", "has_sme_input": False},   # counts
+            {"recommendation": "approve", "has_sme_input": True},    # known, not empty
+        ]
+        empty, total = dashboard.empty_sme_rubric_pass(strategies)
+        assert empty == 1
+        assert total == 2
+
+    def test_missing_key_treated_as_unknown(self):
+        # A dict with no has_sme_input key at all is also unknown.
+        strategies = [{"recommendation": "approve"}]
+        assert dashboard.empty_sme_rubric_pass(strategies) == (0, 0)

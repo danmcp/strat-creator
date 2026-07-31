@@ -117,15 +117,25 @@ Increment as the final step. Read the current value from the file's frontmatter
 first - do not assume it is set. An unset shell variable evaluates to `0` in
 `$(( ))`, so skipping the read makes every pass write `1` instead of
 incrementing. Read the raw value and accept only a non-boolean integer `>= 0`;
-map absent, `null`, or any malformed value to `0` so a bad field cannot break the
-shell arithmetic or produce a wrong count, then increment:
+map a present-but-malformed value (non-integer, boolean, negative) to `0` so a
+bad field cannot break the shell arithmetic. Fail closed on read/parse errors:
+if the `frontmatter.py read` command or the JSON parse fails, do NOT let the
+empty substitution reset a valid counter to `1` - detect it and skip the
+increment, writing only the status:
 
 ```bash
 # only after confirming this pass rewrote body content
 current_refine_count=$(python3 scripts/frontmatter.py read "$task_path" \
-  | python3 -c 'import sys,json; v=json.load(sys.stdin).get("refine_count"); print(v if isinstance(v,int) and not isinstance(v,bool) and v>=0 else 0)')
-python3 scripts/frontmatter.py set "$task_path" \
-  "refine_count=$((current_refine_count + 1))"
+  | python3 -c 'import sys,json; v=json.load(sys.stdin).get("refine_count"); print(v if isinstance(v,int) and not isinstance(v,bool) and v>=0 else 0)') \
+  || current_refine_count=""
+if [[ "$current_refine_count" =~ ^[0-9]+$ ]]; then
+  python3 scripts/frontmatter.py set "$task_path" \
+    status=Refined \
+    "refine_count=$((current_refine_count + 1))"
+else
+  # read/parse failed - never reset a valid counter; record status only
+  python3 scripts/frontmatter.py set "$task_path" status=Refined
+fi
 ```
 
 **Atomicity (recommended):** the body and `refine_count` live in the same
