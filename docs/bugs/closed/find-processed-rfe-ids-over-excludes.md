@@ -2,7 +2,7 @@
 
 ## Summary
 
-`find_processed_rfe_ids` in `scripts/jira_utils.py` permanently excludes an RFE from the `batch-jql` pipeline if *any* of its RHAISTRAT Cloners-linked issues are in a terminal or active status — even when a newer clone exists that still needs processing. This breaks the pipeline's ability to pick up RFEs that have been re-cloned for a new release cycle.
+`find_processed_rfe_ids` in `scripts/jira_utils.py` permanently excludes an RFE from the `batch-jql` pipeline if *any* of its RHAISTRAT Cloners-linked issues are in a terminal or active status -- even when a newer clone exists that still needs processing. This breaks the pipeline's ability to pick up RFEs that have been re-cloned for a new release cycle.
 
 ## Reproduction
 
@@ -10,19 +10,19 @@ The bug is live in production. RHAIRFE-2100 has not been processed by `batch-jql
 
 ### Setup (current state in Jira)
 
-1. **RHAIRFE-2100** — "Automated Zero-Manual-Step Migration from RHOAI 2.25 to 3.5 (EUS)"
+1. **RHAIRFE-2100** -- "Automated Zero-Manual-Step Migration from RHOAI 2.25 to 3.5 (EUS)"
    - Status: Approved (not in `excluded_statuses`)
    - Labels: includes `rfe-creator-autofix-rubric-pass` (matches `quality_labels`)
    - Target Version (cf[10855]): `3.5 GA RHOAI RELEASE` (matches `target_versions`)
    - Has **two** Cloners links:
 
-2. **RHAISTRAT-1755** — old 3.5 strategy (the blocker)
+2. **RHAISTRAT-1755** -- old 3.5 strategy (the blocker)
    - Created: 2026-05-10 by `rhoaieng automationbot` (CI pipeline)
    - Status: **Closed** (Resolution: Duplicate)
    - Labels: `strat-creator-auto-created`, `strat-creator-auto-refined`, `strat-creator-rubric-pass`
    - Closed by Tramaine Darby on 2026-05-29 as "Duplicate of RHAISTRAT-1480"
 
-3. **RHAISTRAT-2210** — new 3.6 strategy (needs processing)
+3. **RHAISTRAT-2210** -- new 3.6 strategy (needs processing)
    - Created: 2026-07-10 by Tramaine Darby (locally, not via CI)
    - Status: **New**
    - Labels: `notebooks-teal-scrum`, `strat-creator-3.6` (no pipeline labels)
@@ -40,7 +40,7 @@ The bug is live in production. RHAIRFE-2100 has not been processed by `batch-jql
 5. **RHAISTRAT-1755** matches the skip-labels query (has `strat-creator-rubric-pass`) AND the excluded-statuses query (status Closed)
 6. `_extract_rfe_keys_from_issues` traces RHAISTRAT-1755's Cloners link back to RHAIRFE-2100
 7. RHAIRFE-2100 is added to the `processed` exclusion set
-8. RHAIRFE-2100 is filtered out — `batch-jql` never sees it
+8. RHAIRFE-2100 is filtered out -- `batch-jql` never sees it
 9. RHAISTRAT-2210 is never processed
 
 ### Evidence from Observatory
@@ -48,8 +48,8 @@ The bug is live in production. RHAIRFE-2100 has not been processed by `batch-jql
 Observatory API confirms zero strat-pipeline runs have ever referenced RHAIRFE-2100 or RHAISTRAT-2210:
 
 ```
-GET /api/traces/search?q=RHAIRFE-2100&pipeline=strat-pipeline → 0 matches
-GET /api/traces/search?q=RHAISTRAT-2210&pipeline=strat-pipeline → 0 matches
+GET /api/traces/search?q=RHAIRFE-2100&pipeline=strat-pipeline -> 0 matches
+GET /api/traces/search?q=RHAISTRAT-2210&pipeline=strat-pipeline -> 0 matches
 ```
 
 The short batch-jql runs (83 seconds, no work done) confirm the exclusion:
@@ -62,7 +62,7 @@ Discovered RFE_IDS:
 
 All 658 RFEs excluded. RHAIRFE-2100 is among them.
 
-The longer run (32 minutes, on 2026-08-03T10:07) found exactly 1 RFE (RHAIRFE-2783) — this was a newly created RFE with no prior STRAT clones.
+The longer run (32 minutes, on 2026-08-03T10:07) found exactly 1 RFE (RHAIRFE-2783) -- this was a newly created RFE with no prior STRAT clones.
 
 ## Expected
 
@@ -97,7 +97,7 @@ def find_processed_rfe_ids(server, user, token, skip_labels,
     return processed
 ```
 
-The function collects RFE keys from ANY matching STRAT clone and adds them to the exclusion set. It never checks whether the RFE has OTHER clones that are NOT in a terminal/excluded state. The implicit assumption is one STRAT per RFE — which breaks when:
+The function collects RFE keys from ANY matching STRAT clone and adds them to the exclusion set. It never checks whether the RFE has OTHER clones that are NOT in a terminal/excluded state. The implicit assumption is one STRAT per RFE -- which breaks when:
 
 - A STRAT is closed as a duplicate and a new one is created
 - A STRAT is created for release N, closed, and a new one is created for release N+1
@@ -107,7 +107,7 @@ The function collects RFE keys from ANY matching STRAT clone and adds them to th
 
 - **RHAISTRAT-2210 has been stranded for 24+ days.** It reached APPROVE 6/8 through local review but has no pipeline labels, meaning it is invisible to downstream consumers that rely on `strat-creator-rubric-pass` as a quality signal.
 - **Any RFE with a closed/resolved STRAT clone is permanently blocked.** This is not limited to RHAIRFE-2100. Any RFE that had a STRAT created in a previous release cycle and then closed/duplicated will hit the same exclusion.
-- **The batch-jql job runs every 6 hours and silently skips these RFEs.** There is no log line indicating which specific RFEs were excluded or why — only the aggregate count ("Excluded 658 already-processed RFE(s)").
+- **The batch-jql job runs every 6 hours and silently skips these RFEs.** There is no log line indicating which specific RFEs were excluded or why -- only the aggregate count ("Excluded 658 already-processed RFE(s)").
 
 ## Fix
 
@@ -151,5 +151,5 @@ individually, instead of only showing the aggregate count.
 - **2026-05-29**: Tramaine closes RHAISTRAT-1755 as duplicate of RHAISTRAT-1480
 - **2026-07-10**: Tramaine creates RHAISTRAT-2210 locally for 3.6 release cycle, cloned from RHAIRFE-2100
 - **2026-07-10**: RHAISTRAT-2210 goes through 4 rounds of local review, reaches APPROVE 6/8
-- **2026-07-10 – 2026-08-03**: `batch-jql` runs every 6 hours (~96 runs), never picks up RHAIRFE-2100
+- **2026-07-10 - 2026-08-03**: `batch-jql` runs every 6 hours (~96 runs), never picks up RHAIRFE-2100
 - **2026-08-03**: Bug identified via Observatory API investigation
