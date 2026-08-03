@@ -9,6 +9,7 @@ Environment variables:
 """
 
 import base64
+import collections
 import json
 import os
 import re
@@ -261,6 +262,26 @@ def _extract_rfe_keys_from_issues(issues):
     return rfe_keys
 
 
+def _count_rfe_clones_from_issues(issues):
+    """Count RHAISTRAT clones per RHAIRFE key from Cloners links."""
+    counts = collections.Counter()
+    for issue in issues:
+        links = issue.get("fields", {}).get("issuelinks", [])
+        for link in links:
+            if link.get("type", {}).get("name") != "Cloners":
+                continue
+            outward = link.get("outwardIssue", {})
+            inward = link.get("inwardIssue", {})
+            rfe_key = None
+            if outward and outward.get("key", "").startswith("RHAIRFE"):
+                rfe_key = outward["key"]
+            elif inward and inward.get("key", "").startswith("RHAIRFE"):
+                rfe_key = inward["key"]
+            if rfe_key:
+                counts[rfe_key] += 1
+    return counts
+
+
 def find_processed_rfe_ids(server, user, token, skip_labels,
                            excluded_strat_statuses=None,
                            strat_project="RHAISTRAT"):
@@ -269,6 +290,12 @@ def find_processed_rfe_ids(server, user, token, skip_labels,
     Excludes RFEs whose RHAISTRAT clones either:
     - Have any of the skip labels (already processed by pipeline)
     - Are in an active/completed status (being worked on or done)
+
+    Override: if an excluded RFE has exactly one open RHAISTRAT clone
+    that has no skip labels and is not in an excluded status, the RFE
+    is un-excluded so the replacement clone can be processed. This
+    handles the case where an old clone was closed/rejected and a new
+    one was created as a replacement.
     """
     processed = set()
 
@@ -285,6 +312,31 @@ def find_processed_rfe_ids(server, user, token, skip_labels,
         issues = search_issues(server, user, token, jql,
                                fields=["issuelinks"])
         processed |= _extract_rfe_keys_from_issues(issues)
+
+    if processed and excluded_strat_statuses:
+        sc = ", ".join(f'"{s}"' for s in excluded_strat_statuses)
+        open_jql = (f"project = {strat_project} "
+                    f"AND status NOT IN ({sc})")
+        open_issues = search_issues(server, user, token, open_jql,
+                                    fields=["issuelinks"])
+        open_counts = _count_rfe_clones_from_issues(open_issues)
+
+        unlabeled_rfes = set()
+        if skip_labels:
+            lc = ", ".join(f'"{l}"' for l in skip_labels)
+            unlabeled_jql = (f"{open_jql} AND "
+                             f"(labels NOT IN ({lc}) OR labels IS EMPTY)")
+            unlabeled_issues = search_issues(
+                server, user, token, unlabeled_jql,
+                fields=["issuelinks"])
+            unlabeled_rfes = _extract_rfe_keys_from_issues(
+                unlabeled_issues)
+        else:
+            unlabeled_rfes = set(open_counts)
+
+        for rfe_key in unlabeled_rfes:
+            if open_counts.get(rfe_key) == 1 and rfe_key in processed:
+                processed.discard(rfe_key)
 
     return processed
 

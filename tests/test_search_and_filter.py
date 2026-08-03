@@ -263,11 +263,13 @@ class TestExtractRfeKeysFromIssues:
 
 class TestFindProcessedRfeIds:
 
-    def _setup_linked_pair(self, jira, rfe_key, strat_key, labels=None):
+    def _setup_linked_pair(self, jira, rfe_key, strat_key, labels=None,
+                           status=None):
         """Create an RFE and RHAISTRAT issue, link them with Cloners, add labels."""
         jira.create(rfe_key, f"RFE {rfe_key}", f"Description for {rfe_key}")
         jira.create(strat_key, f"Strategy for {rfe_key}",
-                     f"Strategy description for {strat_key}")
+                     f"Strategy description for {strat_key}",
+                     status=status)
         jira.request("POST", "/rest/api/3/issueLink", {
             "type": {"name": "Cloners"},
             "inwardIssue": {"key": strat_key},
@@ -339,3 +341,108 @@ class TestFindProcessedRfeIds:
                          "strat-creator-needs-attention"],
         )
         assert "RHAIRFE-480" in processed
+
+    # --- Multi-clone override tests ---
+
+    SKIP_LABELS = ["strat-creator-rubric-pass",
+                   "strat-creator-needs-attention",
+                   "strat-creator-processing"]
+    EXCLUDED_STATUSES = ["In Progress", "Review", "Release Pending",
+                         "Closed", "Resolved"]
+
+    def test_override_single_open_clone_without_labels(self, jira):
+        """Old clone closed with rubric-pass, new clone in New with no
+        labels -- RFE should NOT be excluded."""
+        self._setup_linked_pair(jira, "RHAIRFE-1000", "RHAISTRAT-2000",
+                                labels=["strat-creator-rubric-pass"],
+                                status="Closed")
+        self._setup_linked_pair(jira, "RHAIRFE-1000", "RHAISTRAT-2001",
+                                status="New")
+
+        processed = find_processed_rfe_ids(
+            jira.url, "admin", "admin",
+            skip_labels=self.SKIP_LABELS,
+            excluded_strat_statuses=self.EXCLUDED_STATUSES,
+        )
+        assert "RHAIRFE-1000" not in processed
+
+    def test_no_override_multiple_open_clones(self, jira):
+        """Old clone closed, two new open clones -- self-split, stay
+        excluded."""
+        self._setup_linked_pair(jira, "RHAIRFE-1100", "RHAISTRAT-2100",
+                                status="Closed")
+        self._setup_linked_pair(jira, "RHAIRFE-1100", "RHAISTRAT-2101",
+                                status="New")
+        self._setup_linked_pair(jira, "RHAIRFE-1100", "RHAISTRAT-2102",
+                                status="New")
+
+        processed = find_processed_rfe_ids(
+            jira.url, "admin", "admin",
+            skip_labels=self.SKIP_LABELS,
+            excluded_strat_statuses=self.EXCLUDED_STATUSES,
+        )
+        assert "RHAIRFE-1100" in processed
+
+    def test_no_override_all_closed_with_labels(self, jira):
+        """Single clone closed with rubric-pass, zero open clones --
+        work is done, stay excluded."""
+        self._setup_linked_pair(jira, "RHAIRFE-1200", "RHAISTRAT-2200",
+                                labels=["strat-creator-rubric-pass"],
+                                status="Closed")
+
+        processed = find_processed_rfe_ids(
+            jira.url, "admin", "admin",
+            skip_labels=self.SKIP_LABELS,
+            excluded_strat_statuses=self.EXCLUDED_STATUSES,
+        )
+        assert "RHAIRFE-1200" in processed
+
+    def test_no_override_open_clone_has_skip_label(self, jira):
+        """Old clone closed, new clone has a skip label -- already
+        processed, stay excluded."""
+        self._setup_linked_pair(jira, "RHAIRFE-1300", "RHAISTRAT-2300",
+                                status="Closed")
+        self._setup_linked_pair(jira, "RHAIRFE-1300", "RHAISTRAT-2301",
+                                labels=["strat-creator-processing"],
+                                status="In Progress")
+
+        processed = find_processed_rfe_ids(
+            jira.url, "admin", "admin",
+            skip_labels=self.SKIP_LABELS,
+            excluded_strat_statuses=self.EXCLUDED_STATUSES,
+        )
+        assert "RHAIRFE-1300" in processed
+
+    def test_no_override_open_clone_in_excluded_status(self, jira):
+        """Old clone closed, new clone in In Progress without labels --
+        active work, stay excluded."""
+        self._setup_linked_pair(jira, "RHAIRFE-1400", "RHAISTRAT-2400",
+                                status="Closed")
+        self._setup_linked_pair(jira, "RHAIRFE-1400", "RHAISTRAT-2401",
+                                status="In Progress")
+
+        processed = find_processed_rfe_ids(
+            jira.url, "admin", "admin",
+            skip_labels=self.SKIP_LABELS,
+            excluded_strat_statuses=self.EXCLUDED_STATUSES,
+        )
+        assert "RHAIRFE-1400" in processed
+
+    def test_no_override_unlabeled_plus_labeled_open_clones(self, jira):
+        """One unlabeled open clone and one skip-labeled open clone --
+        two open clones total, no override despite only one being
+        unlabeled."""
+        self._setup_linked_pair(jira, "RHAIRFE-1500", "RHAISTRAT-2500",
+                                status="Closed")
+        self._setup_linked_pair(jira, "RHAIRFE-1500", "RHAISTRAT-2501",
+                                status="New")
+        self._setup_linked_pair(jira, "RHAIRFE-1500", "RHAISTRAT-2502",
+                                labels=["strat-creator-rubric-pass"],
+                                status="New")
+
+        processed = find_processed_rfe_ids(
+            jira.url, "admin", "admin",
+            skip_labels=self.SKIP_LABELS,
+            excluded_strat_statuses=self.EXCLUDED_STATUSES,
+        )
+        assert "RHAIRFE-1500" in processed

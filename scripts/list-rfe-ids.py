@@ -78,6 +78,8 @@ def main():
     parser.add_argument("--include-processed", action="store_true",
                         help="Include RFEs whose STRATs already have "
                              "skip labels (default: exclude them)")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Log each excluded RFE individually")
     parser.add_argument("--batch-size", type=int, default=None,
                         help="Limit output to N RFE IDs")
     parser.add_argument("--batch-offset", type=int, default=0,
@@ -142,11 +144,15 @@ def main():
                 server, user, token, skip_labels,
                 excluded_strat_statuses=excluded_strat_statuses)
             before = len(ids)
+            excluded_ids = [i for i in ids if i in processed]
             ids = [i for i in ids if i not in processed]
-            excluded = before - len(ids)
-            if excluded:
-                print(f"Excluded {excluded} already-processed RFE(s), "
-                      f"{len(ids)} remaining", file=sys.stderr)
+            if excluded_ids:
+                if args.verbose:
+                    for eid in excluded_ids:
+                        print(f"  excluding {eid}", file=sys.stderr)
+                print(f"Excluded {len(excluded_ids)} already-processed "
+                      f"RFE(s), {len(ids)} remaining",
+                      file=sys.stderr)
 
     # Apply batching
     ids = ids[args.batch_offset:]
