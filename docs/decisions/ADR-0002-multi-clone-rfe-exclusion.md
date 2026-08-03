@@ -14,12 +14,20 @@ pipeline skip labels (`strat-creator-rubric-pass`, `strat-creator-needs-attentio
 RHAIRFE keys, and adds those keys to an exclusion set. The implicit assumption is
 one RHAISTRAT clone per RFE.
 
-That assumption breaks when a STRAT is closed (e.g. as a duplicate or at the end
-of a release cycle) and a replacement clone is created for the next cycle. The old
-closed clone triggers exclusion, and the pipeline never sees the replacement.
-RHAIRFE-2100 was stranded for 24+ days because of this -- its old clone
-(RHAISTRAT-1755, Closed with `strat-creator-rubric-pass`) blocked the new clone
-(RHAISTRAT-2210, New, no labels) from ever being processed.
+That assumption breaks in two scenarios:
+
+1. **Strategy reject flow.** A user reviews a pipeline-generated strategy, decides
+   it is inadequate, closes the original STRAT, and uses the skill locally to
+   create a replacement with direct human feedback. This is the primary use case --
+   it enables a deliberate reject-and-replace workflow where the pipeline's output
+   is discarded and a human-guided strategy takes its place.
+2. **Release-cycle rollover.** A STRAT is closed at the end of release N and a new
+   clone is created for release N+1.
+
+In both cases, the old closed clone triggers exclusion and the pipeline never sees
+the replacement. RHAIRFE-2100 was stranded for 24+ days because of this -- its old
+clone (RHAISTRAT-1755, Closed with `strat-creator-rubric-pass`) blocked the new
+clone (RHAISTRAT-2210, New, no labels) from ever being processed.
 
 Three approaches were considered:
 
