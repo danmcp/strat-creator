@@ -341,6 +341,12 @@ def find_processed_rfe_ids(server, user, token, skip_labels,
     return processed
 
 
+def get_project_versions(server, user, token, project_key):
+    """Return versions for a project, as a list of {"id", "name", ...} dicts."""
+    data = api_call_with_retry(server, f"/project/{project_key}", user, token)
+    return data.get("versions", [])
+
+
 def get_issue(server, user, token, key, fields=None):
     """GET /rest/api/3/issue/{key}"""
     path = f"/issue/{key}"

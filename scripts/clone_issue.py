@@ -22,6 +22,7 @@ import sys
 from jira_utils import (
     require_env,
     get_issue,
+    get_project_versions,
     create_issue,
     create_issue_link,
 )
@@ -102,14 +103,20 @@ def main():
                   if isinstance(c, dict) and "name" in c]
     affects_versions = [v["name"] for v in fields.get("versions", [])
                         if isinstance(v, dict) and "name" in v]
-    # Target Version (customfield_10855) is a multi-version picker. Prefer the
-    # stable version id over the name so it resolves unambiguously in the
-    # target project; fall back to name when no id is present.
-    target_versions = [
-        {"id": v["id"]} if v.get("id") else {"name": v["name"]}
-        for v in (fields.get("customfield_10855") or [])
-        if isinstance(v, dict) and (v.get("id") or v.get("name"))
-    ]
+    source_tv = [v for v in (fields.get("customfield_10855") or [])
+                 if isinstance(v, dict) and "name" in v]
+    target_versions = []
+    if source_tv:
+        tp_versions = get_project_versions(server, user, token,
+                                           args.target_project)
+        tv_by_name = {v["name"]: v["id"] for v in tp_versions}
+        for v in source_tv:
+            tid = tv_by_name.get(v["name"])
+            if tid:
+                target_versions.append({"id": tid})
+            else:
+                print(f"Target Version '{v['name']}' not found in "
+                      f"{args.target_project}, omitting.", file=sys.stderr)
 
     parent_key = _resolve_parent_outcome(server, user, token, fields)
 

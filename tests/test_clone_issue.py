@@ -99,6 +99,13 @@ class TestCloneIssue:
         assert aff_names == ["2.10"]
 
     def test_target_version_is_copied_to_clone(self, jira):
+        # Seed versions into RHAISTRAT so they can be resolved.
+        jira.create("RHAISTRAT-599", "Version seed",
+                     "Seeds versions into RHAISTRAT.",
+                     issue_type="Feature",
+                     fix_versions=["3.6 EA1 RHOAI RELEASE",
+                                   "3.6 GA RHOAI RELEASE"])
+
         jira.create("RHAIRFE-1003", "Model registry GA",
                      "Promote model registry to GA.",
                      target_versions=["3.6 EA1 RHOAI RELEASE",
@@ -110,12 +117,28 @@ class TestCloneIssue:
         new_key = result.stdout.strip()
         clone = jira.get(new_key)
         target = clone["fields"].get("customfield_10855") or []
-        names = sorted(v["name"] for v in target)
-        assert names == ["3.6 EA1 RHOAI RELEASE", "3.6 GA RHOAI RELEASE"]
+        # Versions are resolved by id against RHAISTRAT; verify both present.
+        project = jira.request("GET", "/rest/api/3/project/RHAISTRAT")
+        tp_ids = {v["name"]: v["id"] for v in project["versions"]}
+        clone_ids = sorted(v["id"] for v in target)
+        expected_ids = sorted([tp_ids["3.6 EA1 RHOAI RELEASE"],
+                               tp_ids["3.6 GA RHOAI RELEASE"]])
+        assert clone_ids == expected_ids
 
-    def test_target_version_prefers_id_over_name(self, jira):
-        # Mirrors live Jira, where customfield_10855 returns full version
-        # objects with a stable id (see RHAIRFE-2750).
+    def test_target_version_resolves_by_name_in_target_project(self, jira):
+        # Seed "3.6 GA RHOAI RELEASE" into RHAISTRAT as a project version.
+        jira.create("RHAISTRAT-600", "Version seed",
+                     "Exists only to seed a version into RHAISTRAT.",
+                     issue_type="Feature",
+                     fix_versions=["3.6 GA RHOAI RELEASE"])
+
+        # Fetch the target-project version id so we can assert against it.
+        project = jira.request("GET",
+                               "/rest/api/3/project/RHAISTRAT")
+        tp_ids = {v["name"]: v["id"] for v in project["versions"]}
+        expected_id = tp_ids["3.6 GA RHOAI RELEASE"]
+
+        # Source RFE has two target versions; only one exists in RHAISTRAT.
         jira.create("RHAIRFE-1004", "Serving GA",
                      "Promote serving to GA.",
                      target_versions=[
@@ -128,10 +151,41 @@ class TestCloneIssue:
         new_key = result.stdout.strip()
         clone = jira.get(new_key)
         target = clone["fields"].get("customfield_10855") or []
-        ids = sorted(v["id"] for v in target)
-        assert ids == ["107606", "107607"]
-        # id is preferred; name is not re-sent on the clone
-        assert all("name" not in v for v in target)
+        assert len(target) == 1
+        assert target[0]["id"] == expected_id
+        assert "3.6 GA RHAII RELEASE" not in [v.get("name", "") for v in target]
+        assert "omitting" in result.stderr.lower()
+
+    def test_target_version_all_unmatched_omits_field(self, jira):
+        # No versions seeded into RHAISTRAT for this test — both should be
+        # omitted, and customfield_10855 should not be set.
+        jira.create("RHAIRFE-1006", "No matching versions",
+                     "Neither source version exists in RHAISTRAT.",
+                     target_versions=[
+                         {"id": "999998", "name": "NONEXISTENT-A"},
+                         {"id": "999999", "name": "NONEXISTENT-B"}])
+
+        result = _run(jira, ["RHAIRFE-1006", "--target-project", "RHAISTRAT"])
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+
+        new_key = result.stdout.strip()
+        clone = jira.get(new_key)
+        target = clone["fields"].get("customfield_10855") or []
+        assert target == []
+
+    def test_target_version_without_name_is_omitted(self, jira):
+        jira.create("RHAIRFE-1007", "Nameless version test",
+                     "Version object with only id, no name.",
+                     target_versions=[
+                         {"id": "999999"}])
+
+        result = _run(jira, ["RHAIRFE-1007", "--target-project", "RHAISTRAT"])
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+
+        new_key = result.stdout.strip()
+        clone = jira.get(new_key)
+        target = clone["fields"].get("customfield_10855") or []
+        assert target == []
 
     def test_clone_inherits_parent_outcome_from_rfe(self, jira):
         jira.create("RHAISTRAT-500", "AI Hub Delivery",
