@@ -7,6 +7,14 @@ if [ -n "${STRAT_SKIP_BOOTSTRAP:-}" ]; then
   exit 0
 fi
 
+# When the CI pipeline loads assess-strat via --plugin-dir (CLAUDE_PLUGINS),
+# skills and agents are already registered at session startup. The clone-and-copy
+# below is only needed for environments that don't use --plugin-dir.
+if [ -n "${CLAUDE_PLUGINS:-}" ]; then
+  echo "CLAUDE_PLUGINS set -- assess-strat loaded via --plugin-dir, skipping bootstrap"
+  exit 0
+fi
+
 CONTEXT_DIR=".context/assess-strat"
 RUBRIC_FILE="$CONTEXT_DIR/scripts/agent_prompt.md"
 
