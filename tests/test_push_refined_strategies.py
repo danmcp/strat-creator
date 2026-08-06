@@ -3,8 +3,6 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPT = os.path.join(PROJECT_ROOT, "scripts", "push_refined_strategies.py")
 FRONTMATTER_SCRIPT = os.path.join(PROJECT_ROOT, "scripts", "frontmatter.py")

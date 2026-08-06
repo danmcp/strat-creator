@@ -4,9 +4,6 @@ import os
 import subprocess
 import sys
 
-import pytest
-
-
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "fetch_issue.py")
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 

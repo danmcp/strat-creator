@@ -16,11 +16,10 @@ import pytest
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "scripts")
 sys.path.insert(0, os.path.abspath(SCRIPTS_DIR))
 
-from artifact_utils import (
+from artifact_utils import (  # noqa: E402
     read_frontmatter,
-    write_frontmatter,
-    update_frontmatter,
     validate,
+    write_frontmatter,
 )
 
 

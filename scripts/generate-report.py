@@ -19,7 +19,8 @@ from pathlib import Path
 
 # Add scripts/ to path for frontmatter imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-from artifact_utils import read_frontmatter, compute_strat_labels, label_category
+from artifact_utils import compute_strat_labels, label_category, read_frontmatter
+
 
 def load_yaml_config(path):
     """Read test-rfes.yaml and return dict keyed by RFE ID."""
@@ -366,10 +367,8 @@ def generate_html(tasks, reviews, review_comments, skipped, pending_review, conf
     revise = sum(1 for r in reviewed_rows if is_revise(r["recommendation"]))
     reject = sum(1 for r in reviewed_rows if is_reject(r["recommendation"]))
     split = sum(1 for r in reviewed_rows if is_split(r["recommendation"]))
-    baselines = sum(1 for r in rows if r["baseline"])
 
     approval_rate = pct(approved, total_reviewed)
-    revision_rate = pct(revise, total_reviewed)
 
     # Per-dimension stats from numeric scores (0=fail, 1=needs work, 2=pass)
     dimensions = ["feasibility", "testability", "scope", "architecture"]
@@ -771,7 +770,7 @@ tr.clickable {{ cursor: pointer; }}
 </tr>
 """
 
-    html += f"""</tbody>
+    html += """</tbody>
 </table>
 </div><!-- end page-summary -->
 
@@ -798,11 +797,11 @@ graph LR
     subgraph P2["Phase 2: Strategy Refinement"]
 
         subgraph SC["strategy-create"]
-            E0["strategy-create"] --> GATE{{{{Pipeline label gate\\nstrat-creator-3.5 +\\nrfe-creator-autofix-rubric-pass\\nor tech-reviewed}}}}
+            E0["strategy-create"] --> GATE{{Pipeline label gate\\nstrat-creator-3.5 +\\nrfe-creator-autofix-rubric-pass\\nor tech-reviewed}}
             GATE -->|"Fail"| SKIP["Skipped RFEs\\nstrat-skipped.md"]
             GATE -->|"Pass"| E1["Fetch RFE\\nfrom Jira"]
             E1 --> E2["Check existing\\nSTRATs via Cloners"]
-            E2 --> EG{{{{"Pipeline label gate\\nSkip if rubric-pass\\nor needs-attention"}}}}
+            E2 --> EG{{"Pipeline label gate\\nSkip if rubric-pass\\nor needs-attention"}}
             EG -->|"Fail"| ESKIP["Skipped STRATs"]
             EG -->|"Pass"| E3["Clone or import\\nRHAISTRAT from Jira"]
             E3 --> E4["Save originals\\n& fetch comments"]
@@ -813,7 +812,7 @@ graph LR
         E6 --> SF
 
         subgraph SR["strategy-refine"]
-            SF["strategy-refine"] --> FG{{{{"Pipeline label gate\\nSkip if rubric-pass\\nor needs-attention"}}}}
+            SF["strategy-refine"] --> FG{{"Pipeline label gate\\nSkip if rubric-pass\\nor needs-attention"}}
             FG -->|"Fail"| FSKIP["Skipped STRATs"]
             FG -->|"Pass"| F0["Fetch arch\\ncontext"]
             F0 --> F1["HOW context\\n&#8226; removed-context (RFE)\\n&#8226; Staff Eng Input\\n&#8226; Arch overlays"]
@@ -826,7 +825,7 @@ graph LR
         F4 --> SRV
 
         subgraph SV["strategy-review"]
-            SRV["strategy-review"] --> RG{{{{"Pipeline label gate\\nSkip if rubric-pass\\nor needs-attention"}}}}
+            SRV["strategy-review"] --> RG{{"Pipeline label gate\\nSkip if rubric-pass\\nor needs-attention"}}
             RG -->|"Fail"| RSKIP["Skipped STRATs"]
             RG -->|"Pass"| R1[feasibility]
             RG -->|"Pass"| R2[testability]
@@ -837,12 +836,12 @@ graph LR
             SC1 --> SCRIPTS["parse_results.py &#8594; apply_scores.py\\n(deterministic verdicts)"]
             SCRIPTS --> CON["Write review\\nscores + prose"]
             CON --> JIRA["Attach review to Jira\\n& post summary\\nas comment"]
-            JIRA --> Q{{{{&#8805;6/8\\nno zeros?}}}}
+            JIRA --> Q{{&#8805;6/8\\nno zeros?}}
             Q -->|"APPROVE"| LA["Add label\\nstrat-creator-rubric-pass"]
             Q -->|"REVISE / REJECT"| LR["Add label\\nstrat-creator-needs-attention"]
         end
 
-        LA --> PA{{"AI Strategy HOW\\nReady\\n(&#128100; review required)"}}
+        LA --> PA{"AI Strategy HOW\\nReady\\n(&#128100; review required)"}
         LR --> HR["&#128100; Human Review\\nStaff Eng or Architect"]
 
         HR -->|"Path A: Update\\narchitecture context"| RL["Remove label\\nneeds-attention"]
@@ -987,7 +986,7 @@ graph LR
 </td></tr>
 """
 
-    html += f"""</tbody>
+    html += """</tbody>
 </table>
 </div><!-- end page-details -->
 
@@ -1047,38 +1046,38 @@ graph LR
 
 """
 
-    html += f"""<div class="footer">
+    html += """<div class="footer">
     strat-creator pipeline | RHAI Agentic SDLC
 </div>
 
 <script>
 let mermaidRendered = false;
-function switchPage(page) {{
+function switchPage(page) {
     document.querySelectorAll('.nav-page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.getElementById('page-' + page).classList.add('active');
     event.target.classList.add('active');
-    if (page === 'pipeline' && !mermaidRendered) {{
+    if (page === 'pipeline' && !mermaidRendered) {
         mermaidRendered = true;
         renderMermaid();
-    }}
-}}
+    }
+}
 
-function toggleDetail(i) {{
+function toggleDetail(i) {
     const panel = document.getElementById('detail-' + i);
     const icon = document.getElementById('icon-' + i);
     panel.classList.toggle('open');
     icon.classList.toggle('open');
-}}
+}
 
-function switchTab(i, tab) {{
+function switchTab(i, tab) {
     const tabs = document.querySelectorAll('#detail-' + i + ' .detail-tab');
     const contents = document.querySelectorAll('#detail-' + i + ' .tab-content');
     tabs.forEach(t => t.classList.remove('active'));
     contents.forEach(c => c.classList.remove('active'));
     document.getElementById('tab-' + i + '-' + tab).classList.add('active');
     event.target.classList.add('active');
-}}
+}
 </script>
 
 <script>
@@ -1086,37 +1085,37 @@ let diagramScale = 1;
 let diagramX = 0, diagramY = 0;
 let isDragging = false, startX, startY;
 
-function zoomDiagram(factor) {{
+function zoomDiagram(factor) {
     diagramScale *= factor;
     diagramScale = Math.max(0.3, Math.min(3, diagramScale));
     updateDiagramTransform();
-}}
+}
 
-function resetDiagram() {{
+function resetDiagram() {
     diagramScale = 1;
     diagramX = 0;
     diagramY = 0;
     updateDiagramTransform();
-}}
+}
 
-function updateDiagramTransform() {{
+function updateDiagramTransform() {
     const inner = document.getElementById('diagram-inner');
-    inner.style.transform = `translate(${{diagramX}}px, ${{diagramY}}px) scale(${{diagramScale}})`;
-}}
+    inner.style.transform = `translate(${diagramX}px, ${diagramY}px) scale(${diagramScale})`;
+}
 
 const container = document.getElementById('diagram-container');
-container.addEventListener('wheel', (e) => {{
+container.addEventListener('wheel', (e) => {
     e.preventDefault();
     zoomDiagram(e.deltaY < 0 ? 1.1 : 0.9);
-}}, {{ passive: false }});
+}, { passive: false });
 
-container.addEventListener('mousedown', (e) => {{
+container.addEventListener('mousedown', (e) => {
     isDragging = true;
     startX = e.clientX - diagramX;
     startY = e.clientY - diagramY;
-}});
+});
 
-document.addEventListener('mousemove', (e) => {{
+document.addEventListener('mousemove', (e) => {
     if (!isDragging) return;
     diagramX = e.clientX - startX;
     diagramY = e.clientY - startY;
@@ -1124,29 +1123,29 @@ document.addEventListener('mousemove', (e) => {{
     inner.style.transition = 'none';
     updateDiagramTransform();
     inner.style.transition = 'transform 0.1s ease';
-}});
+});
 
-document.addEventListener('mouseup', () => {{ isDragging = false; }});
+document.addEventListener('mouseup', () => { isDragging = false; });
 </script>
 
 <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({{
+    mermaid.initialize({
         startOnLoad: false,
         theme: 'dark',
-        flowchart: {{
+        flowchart: {
             useMaxWidth: false,
             htmlLabels: true,
             curve: 'basis'
-        }}
-    }});
+        }
+    });
 
     // Deferred render — Mermaid can't measure inside display:none
-    window.renderMermaid = async function() {{
+    window.renderMermaid = async function() {
         await mermaid.run();
         const svg = document.querySelector('.mermaid svg');
         const ctr = document.getElementById('diagram-container');
-        if (svg && ctr) {{
+        if (svg && ctr) {
             const svgRect = svg.getBoundingClientRect();
             const ctrRect = ctr.getBoundingClientRect();
             const scaleX = ctrRect.width / svgRect.width;
@@ -1155,8 +1154,8 @@ document.addEventListener('mouseup', () => {{ isDragging = false; }});
             diagramX = (ctrRect.width - svgRect.width * diagramScale) / 2;
             diagramY = (ctrRect.height - svgRect.height * diagramScale) / 2;
             updateDiagramTransform();
-        }}
-    }};
+        }
+    };
 </script>
 
 </body>

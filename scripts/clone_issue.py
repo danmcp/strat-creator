@@ -20,11 +20,11 @@ import argparse
 import sys
 
 from jira_utils import (
-    require_env,
-    get_issue,
-    get_project_versions,
     create_issue,
     create_issue_link,
+    get_issue,
+    get_project_versions,
+    require_env,
 )
 
 
@@ -97,8 +97,8 @@ def main():
     priority_obj = fields.get("priority")
     priority = priority_obj.get("name", "Major") if isinstance(
         priority_obj, dict) else "Major"
-    labels = [l for l in fields.get("labels", [])
-              if l != "strat-creator-processing"]
+    labels = [label for label in fields.get("labels", [])
+              if label != "strat-creator-processing"]
     components = [c["name"] for c in fields.get("components", [])
                   if isinstance(c, dict) and "name" in c]
     affects_versions = [v["name"] for v in fields.get("versions", [])

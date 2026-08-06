@@ -10,7 +10,6 @@ import urllib.request
 
 import pytest
 
-
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "scripts")
 
 
@@ -54,8 +53,8 @@ def jira_emu():
     get_settings.cache_clear()
     from jira_emulator.database import reset_engine
     reset_engine()
-    from jira_emulator.app import create_app
     import uvicorn
+    from jira_emulator.app import create_app
 
     app = create_app()
     config = uvicorn.Config(

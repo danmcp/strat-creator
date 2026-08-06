@@ -7,8 +7,12 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from jira_utils import markdown_to_adf, adf_to_markdown, normalize_for_compare, strip_metadata
-
+from jira_utils import (
+    adf_to_markdown,
+    markdown_to_adf,
+    normalize_for_compare,
+    strip_metadata,
+)
 
 if platform.system() != "Windows":
     @pytest.fixture(autouse=True)
@@ -407,7 +411,6 @@ class TestRoundTrip:
         )
         adf = markdown_to_adf(md)
         back = adf_to_markdown(adf)
-        normalized_orig = normalize_for_compare(md)
         normalized_back = normalize_for_compare(back)
         assert "Main Title" in normalized_back
         assert "bold" in normalized_back

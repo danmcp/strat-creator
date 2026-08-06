@@ -53,7 +53,7 @@ def _allowed_redirect(original_url, redirect_url):
 
     Allows same-origin and *.atlassian.net (Jira Cloud host migration).
     """
-    from urllib.parse import urlparse, urljoin
+    from urllib.parse import urljoin, urlparse
     redirect_resolved = urljoin(original_url, redirect_url)
     orig = urlparse(original_url)
     redir = urlparse(redirect_resolved)
@@ -212,7 +212,7 @@ def build_jql_from_config(config_path):
     order = jql_cfg.get("order_by", "key ASC")
 
     clauses = [f'project = {project}']
-    label_clause = " OR ".join(f'labels = "{l}"' for l in required)
+    label_clause = " OR ".join(f'labels = "{label}"' for label in required)
     version_clause = ""
     if target_versions:
         versions_csv = ", ".join(f'"{v}"' for v in target_versions)
@@ -227,10 +227,10 @@ def build_jql_from_config(config_path):
     elif version_clause:
         clauses.append(version_clause)
     if quality:
-        quality_clause = " OR ".join(f'labels = "{l}"' for l in quality)
+        quality_clause = " OR ".join(f'labels = "{label}"' for label in quality)
         clauses.append(f'({quality_clause})')
     if excluded_labels:
-        labels_csv = ", ".join(f'"{l}"' for l in excluded_labels)
+        labels_csv = ", ".join(f'"{label}"' for label in excluded_labels)
         clauses.append(f'(labels NOT IN ({labels_csv}) OR labels IS EMPTY)')
     if excluded:
         status_clause = ", ".join(f'"{s}"' for s in excluded)
@@ -300,7 +300,7 @@ def find_processed_rfe_ids(server, user, token, skip_labels,
     processed = set()
 
     if skip_labels:
-        label_clause = " OR ".join(f'labels = "{l}"' for l in skip_labels)
+        label_clause = " OR ".join(f'labels = "{label}"' for label in skip_labels)
         jql = f"project = {strat_project} AND ({label_clause})"
         issues = search_issues(server, user, token, jql,
                                fields=["issuelinks"])
@@ -323,7 +323,7 @@ def find_processed_rfe_ids(server, user, token, skip_labels,
 
         unlabeled_rfes = set()
         if skip_labels:
-            lc = ", ".join(f'"{l}"' for l in skip_labels)
+            lc = ", ".join(f'"{label}"' for label in skip_labels)
             unlabeled_jql = (f"{open_jql} AND "
                              f"(labels NOT IN ({lc}) OR labels IS EMPTY)")
             unlabeled_issues = search_issues(
@@ -529,7 +529,7 @@ def delete_attachment(server, user, token, attachment_id, max_retries=3):
     for attempt in range(max_retries):
         try:
             req = urllib.request.Request(url, headers=headers, method="DELETE")
-            with urllib.request.urlopen(req, timeout=60, context=ssl_ctx) as resp:
+            with urllib.request.urlopen(req, timeout=60, context=ssl_ctx):
                 return None
         except urllib.error.HTTPError as e:
             if e.code in (429, 502, 503, 504):

@@ -12,8 +12,20 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest",
+    "ruff",
     "jira-emulator @ git+https://github.com/jctanner/jira-emulator.git",
 ]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/generate-dashboard.py" = ["E501"]
+"scripts/generate-report.py" = ["E501"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

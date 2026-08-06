@@ -1,25 +1,22 @@
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
+from artifact_utils import read_frontmatter
 from strategy_history import (
-    find_latest_version,
+    STRATEGY_HEADING,
+    diff_to_html,
     extract_strategy_section,
+    find_latest_version,
+    generate_diff_html,
+    has_changes,
+    reset,
+    save,
+    snapshot,
     split_subsections,
     word_diff,
-    has_changes,
-    diff_to_html,
-    generate_diff_html,
-    reset,
-    snapshot,
-    save,
-    STRATEGY_HEADING,
 )
-from artifact_utils import read_frontmatter
-
 
 SAMPLE_FRONTMATTER = """\
 ---

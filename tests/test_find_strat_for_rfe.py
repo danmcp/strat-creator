@@ -4,9 +4,6 @@ import os
 import subprocess
 import sys
 
-import pytest
-
-
 SCRIPT = os.path.join(
     os.path.dirname(__file__), "..", "scripts", "find_strat_for_rfe.py")
 

@@ -1,7 +1,10 @@
-.PHONY: install test test-unit test-integration test-e2e test-mermaid clean
+.PHONY: install lint test test-unit test-integration test-e2e test-mermaid clean
 
 install:            ## Install all dependencies via uv
 	uv sync
+
+lint:               ## Lint Python files with ruff
+	uv run ruff check scripts/ tests/
 
 test:               ## Run all tests
 	uv run pytest tests/ -v --tb=short

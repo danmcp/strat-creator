@@ -6,19 +6,17 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from artifact_utils import (
-    SCHEMAS,
-    validate,
+    ValidationError,
+    _migrate_fields,
     apply_defaults,
-    read_frontmatter,
-    write_frontmatter,
-    update_frontmatter,
     compute_strat_labels,
     label_category,
-    _migrate_fields,
-    ValidationError,
+    read_frontmatter,
+    update_frontmatter,
+    validate,
+    write_frontmatter,
 )
 from jira_utils import strip_metadata
-
 
 # ─── strat-task schema validation ─────────────────────────────────────────────
 

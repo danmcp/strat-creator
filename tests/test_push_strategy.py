@@ -3,25 +3,22 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from push_strategy import (
-    extract_strategy_section,
-    extract_staff_input_section,
-    extract_tldr_section,
-    extract_source_rfe,
-    _build_description_stub,
-    _find_strategy_attachment,
-    STRATEGY_HEADING,
-    STAFF_INPUT_HEADING,
-    ATTACHMENT_NOTICE,
-    ATTACHMENT_NOTICE_NO_TLDR,
-    STRATEGY_ATTACHMENT_TEMPLATE,
-)
 from jira_utils import (
+    BUSINESS_NEED_HEADING,
+    RFE_REFERENCE_MARKER,
     build_rfe_reference,
     reconstruct_business_need,
     reconstruct_business_need_file,
-    RFE_REFERENCE_MARKER,
-    BUSINESS_NEED_HEADING,
+)
+from push_strategy import (
+    STAFF_INPUT_HEADING,
+    STRATEGY_HEADING,
+    _build_description_stub,
+    _find_strategy_attachment,
+    extract_source_rfe,
+    extract_staff_input_section,
+    extract_strategy_section,
+    extract_tldr_section,
 )
 
 

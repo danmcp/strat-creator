@@ -4,11 +4,9 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from apply_scores import extract_score_table, extract_feedback, ensure_review_file
+from apply_scores import ensure_review_file, extract_feedback, extract_score_table
 
 SCRIPTS_DIR = os.path.join(os.path.dirname(__file__), "..", "scripts")
 APPLY_SCORES_SCRIPT = os.path.join(SCRIPTS_DIR, "apply_scores.py")

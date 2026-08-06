@@ -1,11 +1,10 @@
 """Integration tests for create_issue() against jira-emulator."""
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from jira_utils import create_issue
-
 
 ADF_DESC = {
     "type": "doc",

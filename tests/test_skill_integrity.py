@@ -93,7 +93,7 @@ class TestSymlinkChain:
                                                   skill_path, content):
         scripts_link = os.path.join(skill_path, "scripts")
         if not os.path.islink(scripts_link):
-            pytest.skip(f"symlink missing (covered by TestSymlinkPresence)")
+            pytest.skip("symlink missing (covered by TestSymlinkPresence)")
         resolved = os.path.realpath(scripts_link)
         assert resolved == os.path.realpath(SCRIPTS_DIR), (
             f"Skill '{skill_name}' scripts symlink resolves to {resolved}, "
@@ -105,7 +105,7 @@ class TestSymlinkChain:
     def test_symlink_target_is_directory(self, skill_name, skill_path, content):
         scripts_link = os.path.join(skill_path, "scripts")
         if not os.path.islink(scripts_link):
-            pytest.skip(f"symlink missing (covered by TestSymlinkPresence)")
+            pytest.skip("symlink missing (covered by TestSymlinkPresence)")
         assert os.path.isdir(scripts_link), (
             f"Skill '{skill_name}' scripts symlink is dangling")
 

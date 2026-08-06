@@ -3,11 +3,9 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from jira_utils import adf_to_markdown, RFE_REFERENCE_MARKER
+from jira_utils import RFE_REFERENCE_MARKER, adf_to_markdown
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPT = os.path.join(PROJECT_ROOT, "scripts", "push_strategy.py")
@@ -490,7 +488,7 @@ def _make_large_strategy(size_chars=35000):
         "**Components**: nvidia-device-plugin, dashboard, model-serving\n",
         "### Technical Approach\n",
     ]
-    while sum(len(l) for l in lines) < size_chars:
+    while sum(len(line) for line in lines) < size_chars:
         lines.append(
             "This is a detailed technical paragraph explaining the implementation "
             "approach for GPU time-slicing using NVIDIA MIG profiles. It covers "

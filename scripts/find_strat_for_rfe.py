@@ -29,7 +29,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from jira_utils import require_env, get_issue
+from jira_utils import get_issue, require_env
 
 
 def find_strat_clones(server, user, token, rfe_key):

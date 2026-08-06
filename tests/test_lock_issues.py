@@ -1,11 +1,7 @@
 """Integration tests for lock_issues.py against jira-emulator."""
-import json
 import os
 import subprocess
 import sys
-
-import pytest
-
 
 SCRIPT = os.path.join(
     os.path.dirname(__file__), "..", "scripts", "lock_issues.py")

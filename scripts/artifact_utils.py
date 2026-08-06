@@ -12,7 +12,6 @@ import sys
 
 import yaml
 
-
 # ─── Schema Definitions ────────────────────────────────────────────────────────
 
 # Each schema is a dict of field_name -> field_spec.
@@ -523,7 +522,7 @@ def write_frontmatter(path, data, schema_type):
     errors = validate(data, schema_type)
     if errors:
         raise ValidationError(
-            f"Frontmatter validation failed:\n"
+            "Frontmatter validation failed:\n"
             + "\n".join(f"  - {e}" for e in errors))
 
     # Read existing body if file exists

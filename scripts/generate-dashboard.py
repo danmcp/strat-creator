@@ -23,12 +23,13 @@ from pathlib import Path
 
 # Add scripts/ to path for artifact_utils
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-from artifact_utils import read_frontmatter, compute_strat_labels, label_category
-
 # extract-pipeline-data.py is hyphenated (not importable by name); load it so the
 # dashboard shares a single source of truth for the metric parsers/validators
 # (has_sme_input, valid_refine_count) rather than re-implementing them here.
 import importlib.util as _il
+
+from artifact_utils import compute_strat_labels, read_frontmatter
+
 _epd_path = os.path.join(os.path.dirname(__file__), "extract-pipeline-data.py")
 _epd_spec = _il.spec_from_file_location("extract_pipeline_data", _epd_path)
 _epd = _il.module_from_spec(_epd_spec)
@@ -627,7 +628,7 @@ def scan_all_runs(data_dir, config, max_runs=None):
         if stats is None:
             stats = extract_run_stats(entry_path, config)
         if stats is None:
-            print(f"    Skipped (no artifacts)")
+            print("    Skipped (no artifacts)")
             continue
 
         stats["run_id"] = entry
@@ -636,7 +637,7 @@ def scan_all_runs(data_dir, config, max_runs=None):
         stats["is_current"] = (entry == current_target)
         # Skip runs explicitly marked as dry
         if stats.get("dry_run") is True:
-            print(f"    Skipped (dry run)")
+            print("    Skipped (dry run)")
             continue
 
         # Attach cost data from pipeline-data.json or backfill
@@ -793,34 +794,11 @@ def generate_dashboard(runs, exec_summary, output_path, jira_counts=None,
                        processing_issues=None):
     """Generate the full dashboard HTML."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    current = runs[-1] if runs else None
-    prev = runs[-2] if len(runs) >= 2 else None
 
     # Prepare JSON data (strip strategy HTML bodies for overview; keep for detail)
     runs_json = json.dumps(runs, indent=None)
     jira_counts_json = json.dumps(jira_counts) if jira_counts else "null"
     processing_json = json.dumps(processing_issues) if processing_issues else "[]"
-
-    # Delta arrows
-    if current and current.get("delta_approval") is not None:
-        da = current["delta_approval"]
-        if da > 0:
-            delta_arrow = f'<span style="color:#3fb950">+{da}%</span>'
-        elif da < 0:
-            delta_arrow = f'<span style="color:#f85149">{da}%</span>'
-        else:
-            delta_arrow = '<span style="color:#8b949e">0%</span>'
-    else:
-        delta_arrow = '<span style="color:#6e7681">first run</span>'
-
-    # Hero
-    if current:
-        rate = current["approval_rate"]
-        hero_color = health_color(rate)
-        hero_text = f'{current["approved"]} of {current["reviewed"]} strategies approved ({rate}%)'
-    else:
-        hero_color = "#8b949e"
-        hero_text = "No runs found"
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2704,7 +2682,7 @@ initCharts();
 def _query_jira_kpis():
     """Query Jira for pipeline label counts. Returns dict or None."""
     try:
-        from jira_utils import require_env, query_label_counts
+        from jira_utils import query_label_counts, require_env
         server, user, token = require_env()
         if not all([server, user, token]):
             print("Warning: JIRA env vars not set, skipping Jira KPIs",
@@ -2732,7 +2710,7 @@ def _query_processing_issues():
     ISO timestamp when the label was added (from changelog), or None.
     """
     try:
-        from jira_utils import require_env, search_issues, api_call_with_retry
+        from jira_utils import api_call_with_retry, require_env, search_issues
         server, user, token = require_env()
         if not all([server, user, token]):
             print("Warning: JIRA env vars not set, skipping processing query",

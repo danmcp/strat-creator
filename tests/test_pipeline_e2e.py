@@ -9,11 +9,9 @@ import os
 import subprocess
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from artifact_utils import read_frontmatter, read_frontmatter_validated
+from artifact_utils import read_frontmatter_validated
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SCRIPTS_DIR = os.path.join(PROJECT_ROOT, "scripts")
@@ -86,7 +84,6 @@ class TestScenarioA:
         env = _make_env(jira.url)
         strat_tasks = art_dir / "artifacts" / "strat-tasks"
         strat_reviews = art_dir / "artifacts" / "strat-reviews"
-        strat_originals = art_dir / "artifacts" / "strat-originals"
 
         # 1. Seed emulator with RFE
         jira.create(

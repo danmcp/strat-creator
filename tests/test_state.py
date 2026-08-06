@@ -3,8 +3,6 @@ import re
 import subprocess
 import sys
 
-import pytest
-
 SCRIPT = os.path.join(os.path.dirname(__file__), "..", "scripts", "state.py")
 
 

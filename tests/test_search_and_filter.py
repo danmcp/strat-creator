@@ -2,11 +2,13 @@
 import os
 import sys
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
-from jira_utils import search_issues, find_processed_rfe_ids, _extract_rfe_keys_from_issues
+from jira_utils import (
+    _extract_rfe_keys_from_issues,
+    find_processed_rfe_ids,
+    search_issues,
+)
 
 
 class TestSearchIssues:

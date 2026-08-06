@@ -26,7 +26,6 @@ import re
 import subprocess
 import sys
 
-
 FRONTMATTER_SCRIPT = os.path.join(os.path.dirname(__file__), "frontmatter.py")
 REVIEW_DIR_DEFAULT = os.path.join(os.path.dirname(__file__), "..", "artifacts", "strat-reviews")
 
@@ -114,14 +113,14 @@ def ensure_review_file(review_path, strat_id, scores, score_table, feedback):
     verdict = scores["Verdict"]
     total = scores["Total"]
 
-    body = f"## Scores\n\n"
+    body = "## Scores\n\n"
     if score_table:
         body += f"{score_table}\n"
         if "Total" not in score_table:
             body += f"| **Total** | **{total}/8** | **{verdict}** |\n"
     else:
-        body += f"| Criterion | Score | Notes |\n"
-        body += f"|-----------|-------|-------|\n"
+        body += "| Criterion | Score | Notes |\n"
+        body += "|-----------|-------|-------|\n"
         body += f"| Feasibility | {scores['Feasibility']}/2 | |\n"
         body += f"| Testability | {scores['Testability']}/2 | |\n"
         body += f"| Scope | {scores['Scope']}/2 | |\n"

@@ -264,8 +264,8 @@ class TestCrossPhaseEdges:
 
 class TestStructuralIntegrity:
     def test_subgraphs_properly_closed(self, mermaid_lines):
-        opens = sum(1 for l in mermaid_lines if l.startswith("subgraph"))
-        closes = sum(1 for l in mermaid_lines if l == "end")
+        opens = sum(1 for line in mermaid_lines if line.startswith("subgraph"))
+        closes = sum(1 for line in mermaid_lines if line == "end")
         assert opens == closes, (
             f"{opens} subgraph opens but {closes} end closes")
 

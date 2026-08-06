@@ -196,7 +196,11 @@ def generate_report(strategies, run_metas):
                 else:
                     vals.append("—")
             total_st = safe_stats([r["total"] for r in runs])
-            tv = f"{total_st[key]:.1f}" if total_st[key] is not None and isinstance(total_st[key], float) else str(total_st[key] or "—")
+            tv = (
+                f"{total_st[key]:.1f}"
+                if total_st[key] is not None and isinstance(total_st[key], float)
+                else str(total_st[key] or "—")
+            )
             lines.append(f"| **{label}** | {vals[0]} | {vals[1]} | {vals[2]} | {vals[3]} | **{tv}** | |")
 
         lines.append("")

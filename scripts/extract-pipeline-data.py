@@ -28,7 +28,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
-from artifact_utils import read_frontmatter, compute_strat_labels, label_category
+from artifact_utils import compute_strat_labels, read_frontmatter
 
 
 def extract_size(body):
@@ -321,7 +321,7 @@ def scan_runs(data_dir, max_runs=None):
         print(f"  Scanning run {entry}...", file=sys.stderr)
         run_data = extract_run(entry_path)
         if run_data is None:
-            print(f"    Skipped (no artifacts)", file=sys.stderr)
+            print("    Skipped (no artifacts)", file=sys.stderr)
             continue
 
         run_data["run_id"] = entry

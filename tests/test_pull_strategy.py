@@ -1,21 +1,18 @@
 """Integration tests for pull_strategy.py against jira-emulator."""
-import json
 import os
 import subprocess
 import sys
 import tempfile
 
-import pytest
-
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 
 from artifact_utils import read_frontmatter
 from jira_utils import (
-    markdown_to_adf,
+    BUSINESS_NEED_HEADING,
+    RFE_REFERENCE_MARKER,
     add_attachment,
     build_rfe_reference,
-    RFE_REFERENCE_MARKER,
-    BUSINESS_NEED_HEADING,
+    markdown_to_adf,
 )
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -187,7 +184,7 @@ class TestPullReviewComment:
             "| Feasibility | 2/2 |\n"
         )
         review_adf = markdown_to_adf(review_md)
-        jira.request("POST", f"/rest/api/3/issue/RHAISTRAT-2030/comment",
+        jira.request("POST", "/rest/api/3/issue/RHAISTRAT-2030/comment",
                      {"body": review_adf})
 
         local_dir = tmp_path / "local"
@@ -312,7 +309,7 @@ class TestPullWithStrategyAttachment:
 
         lines = [f"{STRATEGY_HEADING}\n", "### TL;DR\n",
                  "Round-trip test summary.\n", "### Technical Approach\n"]
-        while sum(len(l) for l in lines) < 25000:
+        while sum(len(line) for line in lines) < 25000:
             lines.append(
                 "Detailed paragraph about GPU time-slicing implementation "
                 "approach using NVIDIA MIG profiles and device plugins.\n\n")

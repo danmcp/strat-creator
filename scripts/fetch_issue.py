@@ -6,7 +6,8 @@ Atlassian MCP server is unavailable. Outputs JSON to stdout for the
 calling skill to parse.
 
 Usage:
-    python3 scripts/fetch_issue.py RHAIRFE-1234 [--fields summary,description,comment,priority,labels,status] [--markdown]
+    python3 scripts/fetch_issue.py RHAIRFE-1234 \
+        [--fields summary,description,comment,priority,labels,status] [--markdown]
 
     # Fetch everything and write all artifact files at once
     python3 scripts/fetch_issue.py RHAIRFE-1234 --fetch-all artifacts
@@ -32,9 +33,7 @@ import subprocess
 import sys
 import urllib.request
 
-from jira_utils import (require_env, get_issue, get_comments, adf_to_markdown,
-                        ssl_ctx)
-
+from jira_utils import adf_to_markdown, get_comments, get_issue, require_env, ssl_ctx
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024  # 10 MB
 

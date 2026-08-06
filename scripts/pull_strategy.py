@@ -24,13 +24,13 @@ import tempfile
 sys.path.insert(0, os.path.dirname(__file__))
 
 from jira_utils import (
-    require_env,
-    get_issue,
-    get_comments,
+    RFE_REFERENCE_MARKER,
     adf_to_markdown,
     download_attachment,
+    get_comments,
+    get_issue,
     reconstruct_business_need,
-    RFE_REFERENCE_MARKER,
+    require_env,
 )
 
 POST_CI_LABELS = {"strat-creator-rubric-pass", "strat-creator-needs-attention"}

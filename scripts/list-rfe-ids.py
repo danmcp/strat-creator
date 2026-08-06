@@ -143,7 +143,6 @@ def main():
             processed = find_processed_rfe_ids(
                 server, user, token, skip_labels,
                 excluded_strat_statuses=excluded_strat_statuses)
-            before = len(ids)
             excluded_ids = [i for i in ids if i in processed]
             ids = [i for i in ids if i not in processed]
             if excluded_ids:

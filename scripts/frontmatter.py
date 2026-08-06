@@ -37,13 +37,13 @@ import sys
 
 from artifact_utils import (
     SCHEMAS,
+    ValidationError,
     get_schema_yaml,
     read_frontmatter,
     read_frontmatter_validated,
-    write_frontmatter,
-    update_frontmatter,
     rebuild_index,
-    ValidationError,
+    update_frontmatter,
+    write_frontmatter,
 )
 
 
@@ -219,7 +219,7 @@ def cmd_batch_read(args):
 
 def cmd_rebuild_index(args):
     """Rebuild rfes.md index from frontmatter."""
-    content = rebuild_index(args.artifacts_dir)
+    rebuild_index(args.artifacts_dir)
     print(f"Rebuilt {args.artifacts_dir}/rfes.md")
 
 
