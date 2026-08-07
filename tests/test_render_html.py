@@ -163,4 +163,4 @@ class TestDashboardHtmlRendering:
 
     def test_chart_js_config(self):
         html = self._render()
-        assert "new Chart(" in html or "Chart(" in html or "chart.js" in html.lower()
+        assert "new Chart(" in html
