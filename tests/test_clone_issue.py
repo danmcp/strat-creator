@@ -36,7 +36,7 @@ class TestCloneIssue:
         assert new_key.startswith("RHAISTRAT-"), f"unexpected key: {new_key}"
 
         clone = jira.get(new_key)
-        assert clone["fields"]["summary"] == "GPU sharing for notebooks"
+        assert clone["fields"]["summary"] == "[DRAFT] GPU sharing for notebooks"
 
         source = jira.get("RHAIRFE-1000")
         source_priority = source["fields"].get("priority")

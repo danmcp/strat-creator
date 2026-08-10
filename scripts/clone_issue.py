@@ -92,7 +92,7 @@ def main():
                                "customfield_10855", "parent"])
     fields = source.get("fields", {})
 
-    summary = fields.get("summary", "")
+    summary = f"[DRAFT] {fields.get('summary', '')}"
     description_adf = fields.get("description")
     priority_obj = fields.get("priority")
     priority = priority_obj.get("name", "Major") if isinstance(

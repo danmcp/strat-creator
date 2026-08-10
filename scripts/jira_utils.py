@@ -423,6 +423,13 @@ def update_issue(server, user, token, issue_key, summary, description_adf):
     api_call_with_retry(server, path, user, token, body=body, method="PUT")
 
 
+def update_summary(server, user, token, issue_key, summary):
+    """PUT to update only an issue's summary field."""
+    body = {"fields": {"summary": summary}}
+    path = f"/issue/{issue_key}"
+    api_call_with_retry(server, path, user, token, body=body, method="PUT")
+
+
 def add_labels(server, user, token, issue_key, labels):
     """Add labels to an existing issue without removing existing ones."""
     body = {

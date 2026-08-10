@@ -96,7 +96,15 @@ add_labels(s, u, t, 'RHAISTRAT-NNNN', ['strat-creator-human-sign-off'])
 
 Print `[LABEL] strat-creator-human-sign-off added to RHAISTRAT-NNNN`.
 
-## Step 7: Confirm Completion
+## Step 7: Remove [DRAFT] Prefix
+
+Strip the `[DRAFT] ` prefix from the Jira summary if present:
+
+```bash
+python3 ${CLAUDE_SKILL_DIR}/scripts/remove_draft_prefix.py RHAISTRAT-NNNN
+```
+
+## Step 8: Confirm Completion
 
 Tell the user: "RHAISTRAT-NNNN signed off and marked feature-ready."
 
