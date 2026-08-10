@@ -225,6 +225,17 @@ class TestCloneIssue:
         assert clone["fields"].get("parent") is None
         assert "No parent Outcome found" in result.stderr
 
+    def test_does_not_double_draft_prefix(self, jira):
+        jira.create("RHAIRFE-1008", "[DRAFT] Already prefixed feature",
+                     "Source RFE already has [DRAFT] in summary.")
+
+        result = _run(jira, ["RHAIRFE-1008", "--target-project", "RHAISTRAT"])
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+
+        new_key = result.stdout.strip()
+        clone = jira.get(new_key)
+        assert clone["fields"]["summary"] == "[DRAFT] Already prefixed feature"
+
     def test_missing_env_vars_exits_with_code_2(self, jira):
         env = {k: v for k, v in os.environ.items()
                if k not in ("JIRA_SERVER", "JIRA_USER", "JIRA_TOKEN")}
