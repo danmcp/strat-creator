@@ -37,11 +37,11 @@ evaluated:
 
 **Option B: add `[DRAFT]` at creation, remove at human-sign-off.**
 
-1. `clone_issue.py` prepends `[DRAFT] ` to the summary when creating the
-   RHAISTRAT.
-2. `strategy-signoff` strips the `[DRAFT] ` prefix (if present) when adding the
-   `human-sign-off` label.
-3. Removal is idempotent -- if the summary does not start with `[DRAFT] `, the
+1. `clone_issue.py` prepends `[DRAFT]` (followed by a space) to the summary
+   when creating the RHAISTRAT.
+2. `strategy-signoff` strips the `[DRAFT]` prefix and its trailing space (if
+   present) when adding the `human-sign-off` label.
+3. Removal is idempotent -- if the summary does not start with `[DRAFT]`, the
    update is skipped. This handles manually-created strats and strats predating
    this feature.
 
