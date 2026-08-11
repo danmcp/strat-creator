@@ -24,7 +24,8 @@ Commands:
 Exit codes:
     0 — success (including when all keys are blocked)
     1 — blocked (lock-strat only: STRAT-level or linked-RFE contention)
-    2 — error (missing env vars, API failure, invalid STRAT)
+    2 — error (missing env vars, API failure, missing
+        strat-creator-auto-created label, or no linked RFE)
 """
 
 import os
