@@ -26,7 +26,7 @@ Observatory marks the pipeline red, and the health signal is useless.
 
 The single-key exit-1 path was designed for the `lock-strat` command, where
 blocking a specific STRAT is a meaningful failure. But `batch-jql` hits this
-same path when filtering happens to leave exactly one candidate — and that
+same path when filtering happens to leave exactly one candidate -- and that
 candidate being blocked is normal steady-state, not a failure.
 
 ```
@@ -51,7 +51,7 @@ From run 8970 (2026-08-07T10:09:13Z):
 JQL returned 662 RFE(s)
 Excluded 661 already-processed RFE(s), 1 remaining
 Discovered RFE_IDS: RHAIRFE-3063
-BLOCKED RHAIRFE-3063 — has label(s): strat-creator-needs-attention
+BLOCKED RHAIRFE-3063 -- has label(s): strat-creator-needs-attention
 ERROR: Job failed: exit code 1
 ```
 
@@ -61,7 +61,7 @@ Pipeline has been red since 2026-08-04 due to this pattern repeating on runs
 ## Fix
 
 Remove the single-key vs. multi-key distinction in `lock()`. Always skip
-blocked keys and return exit code 0 — the caller handles empty output.
+blocked keys and return exit code 0 -- the caller handles empty output.
 
 ```python
 def lock(server, user, token, keys):
@@ -71,7 +71,7 @@ def lock(server, user, token, keys):
         labels = _get_labels(server, user, token, key)
         blocked_by = labels & BLOCKING_LABELS
         if blocked_by:
-            print(f"BLOCKED {key} — has label(s): "
+            print(f"BLOCKED {key} -- has label(s): "
                   f"{', '.join(sorted(blocked_by))}", file=sys.stderr)
             continue
 
@@ -106,7 +106,7 @@ does not replace this linked-RFE contention check.
 
 ## Impact of Fix
 
-- `batch-jql`: blocked RFEs produce empty stdout → CI guard catches it → exit 0
+- `batch-jql`: blocked RFEs produce empty stdout -> CI guard catches it -> exit 0
 - `lock-strat`: STRAT-level blocking still returns 1 (line 144, unchanged)
 - `lock-strat`: a blocked linked RFE still returns 1 via the new
   `locked_keys` check
@@ -115,9 +115,9 @@ does not replace this linked-RFE contention check.
 
 ## Test Cases
 
-1. `lock_issues.py lock BLOCKED_KEY` → exit 0, empty stdout, stderr says BLOCKED
-2. `lock_issues.py lock BLOCKED_KEY CLEAN_KEY` → exit 0, stdout has CLEAN_KEY
-3. `lock_issues.py lock CLEAN_KEY` → exit 0, stdout has CLEAN_KEY
-4. `lock_issues.py lock-strat BLOCKED_STRAT` → exit 1 (STRAT-level gate, unchanged)
-5. `lock_issues.py lock-strat CLEAN_STRAT_WITH_ALREADY_LOCKED_RFE` → exit 1
+1. `lock_issues.py lock BLOCKED_KEY` -> exit 0, empty stdout, stderr says BLOCKED
+2. `lock_issues.py lock BLOCKED_KEY CLEAN_KEY` -> exit 0, stdout has CLEAN_KEY
+3. `lock_issues.py lock CLEAN_KEY` -> exit 0, stdout has CLEAN_KEY
+4. `lock_issues.py lock-strat BLOCKED_STRAT` -> exit 1 (STRAT-level gate, unchanged)
+5. `lock_issues.py lock-strat CLEAN_STRAT_WITH_ALREADY_LOCKED_RFE` -> exit 1
    (linked-RFE contention remains a failure)
