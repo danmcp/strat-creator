@@ -7,8 +7,7 @@ from processing the same RFE simultaneously.
 Commands:
     lock RHAIRFE-1234 [...]
         Fetch labels, validate guards, apply strat-creator-processing.
-        Single key: exit 1 if blocked. Multiple keys: skip blocked,
-        print locked subset to stdout.
+        Skips blocked keys, prints locked subset to stdout.
 
     unlock RHAIRFE-1234 [...]
         Remove strat-creator-processing.
@@ -23,8 +22,8 @@ Commands:
         Resolve STRAT→RFE via Cloners link, remove lock from RFE.
 
 Exit codes:
-    0 — success
-    1 — blocked (single key)
+    0 — success (including when all keys are blocked)
+    1 — blocked (lock-strat only: STRAT-level or linked-RFE contention)
     2 — error (missing env vars, API failure, invalid STRAT)
 """
 
@@ -84,25 +83,18 @@ def _resolve_strat_to_rfe(server, user, token, strat_key):
 def lock(server, user, token, keys):
     """Lock RFE(s) by applying strat-creator-processing label.
 
-    For a single key: fails (returns 1) if any blocking label is present.
-    For multiple keys: skips blocked ones, prints locked subset to stdout.
-    Returns (exit_code, locked_keys).
+    Skips blocked keys, prints locked subset to stdout.
+    Returns (exit_code, locked_keys). Always returns exit code 0.
     """
     locked = []
-    batch_mode = len(keys) > 1
 
     for key in keys:
         labels = _get_labels(server, user, token, key)
         blocked_by = labels & BLOCKING_LABELS
         if blocked_by:
-            msg = (f"BLOCKED {key} — has label(s): "
-                   f"{', '.join(sorted(blocked_by))}")
-            if batch_mode:
-                print(msg, file=sys.stderr)
-                continue
-            else:
-                print(msg, file=sys.stderr)
-                return 1, []
+            print(f"BLOCKED {key} — has label(s): "
+                  f"{', '.join(sorted(blocked_by))}", file=sys.stderr)
+            continue
 
         add_labels(server, user, token, key, [PROCESSING_LABEL])
         locked.append(key)
@@ -150,9 +142,10 @@ def lock_strat(server, user, token, strat_key):
               f"Not created by our pipeline.", file=sys.stderr)
         return 2
 
-    # Lock the RFE
-    exit_code, _ = lock(server, user, token, [rfe_key])
-    return exit_code
+    # Lock the RFE. A blocked linked RFE is contention for this specific
+    # STRAT request, so lock-strat must still fail.
+    _, locked_keys = lock(server, user, token, [rfe_key])
+    return 0 if locked_keys else 1
 
 
 def unlock_strat(server, user, token, strat_key):

@@ -48,39 +48,36 @@ class TestLock:
         labels = _get_labels(jira, "RHAIRFE-5000")
         assert "strat-creator-processing" in labels
 
-    def test_lock_already_locked_single_fails(self, jira):
+    def test_lock_already_locked_single_skips(self, jira):
         jira.create("RHAIRFE-5001", "Already locked",
                      "Description.",
                      labels=["strat-creator-processing"])
 
         result = _run(jira, ["lock", "RHAIRFE-5001"])
-        assert result.returncode == 1
+        assert result.returncode == 0
         assert "BLOCKED" in result.stderr
         assert "strat-creator-processing" in result.stderr
+        assert result.stdout.strip() == ""
 
-    def test_lock_needs_attention_single_fails(self, jira):
-        jira.create("RHAIRFE-5002", "Needs attention RFE", "Description.")
-        jira.create("RHAISTRAT-5002", "Strategy", "Description.",
-                     labels=["strat-creator-needs-attention"])
-        # The lock checks the RFE's own labels, not the STRAT's.
-        # For single-rfe, the RFE itself needs the blocking label.
-        # Let's test with the blocking label on the RFE directly.
+    def test_lock_needs_attention_single_skips(self, jira):
         jira.create("RHAIRFE-5003", "RFE with blocking label",
                      "Description.",
                      labels=["strat-creator-needs-attention"])
 
         result = _run(jira, ["lock", "RHAIRFE-5003"])
-        assert result.returncode == 1
+        assert result.returncode == 0
         assert "BLOCKED" in result.stderr
+        assert result.stdout.strip() == ""
 
-    def test_lock_human_signoff_single_fails(self, jira):
+    def test_lock_human_signoff_single_skips(self, jira):
         jira.create("RHAIRFE-5004", "Signed off RFE",
                      "Description.",
                      labels=["strat-creator-human-sign-off"])
 
         result = _run(jira, ["lock", "RHAIRFE-5004"])
-        assert result.returncode == 1
+        assert result.returncode == 0
         assert "BLOCKED" in result.stderr
+        assert result.stdout.strip() == ""
 
     def test_lock_batch_skips_blocked(self, jira):
         jira.create("RHAIRFE-5010", "Good RFE A", "Description.")
