@@ -29,7 +29,7 @@ blocking a specific STRAT is a meaningful failure. But `batch-jql` hits this
 same path when filtering happens to leave exactly one candidate -- and that
 candidate being blocked is normal steady-state, not a failure.
 
-```
+```bash
 # The pipeline does this:
 RFE_IDS=$(python3 scripts/lock_issues.py lock ${RFE_IDS})
 #                                              ^^^^^^^^^
@@ -47,7 +47,7 @@ anything, and the shell step fails before reaching the guard.
 ## Evidence
 
 From run 8970 (2026-08-07T10:09:13Z):
-```
+```text
 JQL returned 662 RFE(s)
 Excluded 661 already-processed RFE(s), 1 remaining
 Discovered RFE_IDS: RHAIRFE-3063
@@ -101,13 +101,13 @@ returned `locked_keys` list:
 
 Without this accompanying change, `lock-strat` would incorrectly return 0
 when the linked RFE already has `strat-creator-processing`. Its existing
-STRAT-level blocking check (lines 139-144) only covers labels on the STRAT and
+STRAT-level blocking check (lines 132-137) only covers labels on the STRAT and
 does not replace this linked-RFE contention check.
 
 ## Impact of Fix
 
 - `batch-jql`: blocked RFEs produce empty stdout -> CI guard catches it -> exit 0
-- `lock-strat`: STRAT-level blocking still returns 1 (line 144, unchanged)
+- `lock-strat`: STRAT-level blocking still returns 1 (line 137, unchanged)
 - `lock-strat`: a blocked linked RFE still returns 1 via the new
   `locked_keys` check
 - `lock` with a single unblocked key: still locks and returns 0 (unchanged)
