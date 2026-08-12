@@ -273,6 +273,16 @@ judges:
   #     Fails closed when the transcripts are missing, which is correct: no capture
   #     means no evidence, and that should surface rather than silently pass on the
   #     reviewers' reads.
+  #     Counts RESULTS, not attempts. Counting tool_use blocks made this check pass
+  #     at 100% on a run where the context directory was empty and refine said so in
+  #     its own output: the reads were attempted, they returned "No files found" and
+  #     "total 0", and the gate scored every one of them as grounding. A tool_use is
+  #     an intent; only its tool_result says whether any documentation came back. So
+  #     each qualifying call is paired to its result by tool_use_id, errors are
+  #     discarded, and the result must clear MIN_RESULT_CHARS. That threshold
+  #     separates real documentation (architecture docs run to thousands of
+  #     characters) from the directory listings and empty-glob replies an empty
+  #     context yields — the longest such reply in the failing run was 151 chars.
   - name: architecture_context_used
     description: strategy-refine itself consulted the architecture-context docs (grounding), not just asserted architecture.
     check: |
@@ -306,7 +316,9 @@ judges:
           return False, "no subagent transcripts (SubagentStop capture disabled?)"
 
       READ_TOOLS = {"Read", "Grep", "Glob", "Bash"}
+      MIN_RESULT_CHARS = 200
       seen = 0
+      attempts = 0
       hits = 0
       for path in transcripts:
           try:
@@ -323,21 +335,30 @@ judges:
           if first.get("sessionId") != session:
               continue
           seen += 1
+          pending = set()
           for line in lines:
-              if "architecture-context" not in line:
-                  continue
               try:
                   ev = json.loads(line)
               except ValueError:
                   continue
               for b in (ev.get("message") or {}).get("content") or []:
-                  if not isinstance(b, dict) or b.get("type") != "tool_use":
+                  if not isinstance(b, dict):
                       continue
-                  if b.get("name") in READ_TOOLS and "architecture-context" in str(b.get("input", {})):
-                      hits += 1
+                  if b.get("type") == "tool_use":
+                      if b.get("name") in READ_TOOLS and "architecture-context" in str(b.get("input", {})):
+                          pending.add(b.get("id"))
+                          attempts += 1
+                  elif b.get("type") == "tool_result" and b.get("tool_use_id") in pending:
+                      pending.discard(b.get("tool_use_id"))
+                      if b.get("is_error"):
+                          continue
+                      content = b.get("content")
+                      text = content if isinstance(content, str) else json.dumps(content)
+                      if len(text) >= MIN_RESULT_CHARS:
+                          hits += 1
       if not seen:
           return False, "no subagent transcript belongs to the refine session"
-      return hits > 0, "refine session read architecture-context {}x (across {} of its transcripts)".format(hits, seen)
+      return hits > 0, "refine session got content from {} of {} architecture-context reads (across {} of its transcripts)".format(hits, attempts, seen)
 
   # --- Reported metric: the pipeline's OWN assess-strat total (0-8), for
   #     pipeline-vs-independent-judge agreement. Aggregates as a mean.
