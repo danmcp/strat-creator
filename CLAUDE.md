@@ -92,9 +92,32 @@ Not yet implemented for strat-creator. Strategy submission to Jira will be added
 
 ## Testing
 
-After every code change, run the test suite in a background subagent before reporting the change as complete. Use `make test-unit` for changes to scripts or library code. Use `make test` to run all tests when integration/E2E tests are also relevant. Never skip this step — a change is not done until tests pass.
+### Implementation and test changes -- run repository tests
 
-**Always run `make test` (full suite including integration tests) before pushing to remote.** Unit tests alone are not sufficient — the jira-emulator integration tests catch issues that unit tests miss.
+Run the repository test suite when **executable implementation, test, configuration, or build files** change. These include files in `scripts/`, `tests/`, `Makefile`, and `pyproject.toml`. Use `make test-unit` for changes to scripts or library code. Use `make test` to run all tests when integration/E2E tests are also relevant. Never skip this step -- a change is not done until tests pass.
+
+**Always run `make test` (full suite including integration tests) before pushing repository code to remote.** Unit tests alone are not sufficient -- the jira-emulator integration tests catch issues that unit tests miss.
+
+### Agent instruction changes -- run integrity checks
+
+Changes to `CLAUDE.md` or `.claude/skills/*/SKILL.md` modify agent behavior, not executable code. They do not require `make test-unit` or `make test` on their own. Instead, run the skill-integrity tests that validate instruction structure: `make test-unit` includes `test_skill_integrity.py`, which checks symlinks, script references, and script quality. Run that subset when only instruction files changed.
+
+### Documentation-only changes -- no repository tests required
+
+Changes limited to files under `docs/` (bug reports, ledger entries, plans, ADRs, notes) are passive documentation and do not require any repository test command unless they accompany implementation changes in the same commit.
+
+### Workflow output -- no repository tests required
+
+Changes limited to the following are **workflow output, not code changes**, and do NOT require `make test`, `make test-unit`, `pytest`, or any repository test command:
+
+- Strategy artifacts in `artifacts/` or `local/` (strat-tasks, strat-reviews, strat-originals, strat-skipped.md, strat-tickets.md)
+- Frontmatter and strategy-history updates on artifact files
+- Review attachments and review comment files
+- Jira field updates, label changes, and comment posts
+- Architecture context fetches into `.context/`
+- State files in `tmp/`
+
+Strategy skills (`strategy-create`, `strategy-refine`, `strategy-review`) produce only workflow output during normal operation. Do not run repository tests after completing a strategy workflow unless the workflow also modified a repository implementation file listed above.
 
 ## Architecture Context
 
