@@ -413,16 +413,19 @@ class TestLockedKeysFile:
                             lambda s, u, t, k, labels: remove_calls.append(k))
 
         keys_file = str(tmp_path / "locked.txt")
-        with open(keys_file, 'w'):
-            pass
-        os.chmod(keys_file, 0o000)
 
-        try:
-            exit_code, locked = lock_issues.lock(
-                "http://x", "u", "t", ["RHAIRFE-7001"],
-                locked_keys_file=keys_file)
-        finally:
-            os.chmod(keys_file, 0o644)
+        real_open = open
+
+        def _failing_open(path, mode='r', *a, **kw):
+            if path == keys_file and 'a' in mode:
+                raise OSError("simulated write failure")
+            return real_open(path, mode, *a, **kw)
+
+        monkeypatch.setattr("builtins.open", _failing_open)
+
+        exit_code, locked = lock_issues.lock(
+            "http://x", "u", "t", ["RHAIRFE-7001"],
+            locked_keys_file=keys_file)
 
         assert exit_code == 2
         assert "RHAIRFE-7001" not in locked
