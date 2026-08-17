@@ -291,3 +291,221 @@ class TestEdgeCases:
         result = _run(jira, ["lock-strat", "RHAISTRAT-1", "RHAISTRAT-2"])
         assert result.returncode == 2
         assert "exactly one" in result.stderr
+
+
+class TestLockedKeysFile:
+
+    def test_batch_records_only_acquired_keys(self, jira, tmp_path):
+        """Mixed batch records only actually-locked keys, not blocked ones."""
+        jira.create("RHAIRFE-6010", "Lockable A", "Description.")
+        jira.create("RHAIRFE-6011", "Blocked B", "Description.",
+                     labels=["strat-creator-processing"])
+        jira.create("RHAIRFE-6012", "Lockable C", "Description.")
+        keys_file = str(tmp_path / "locked.txt")
+
+        result = _run(jira, ["lock",
+                              "--locked-keys-file", keys_file,
+                              "RHAIRFE-6010", "RHAIRFE-6011", "RHAIRFE-6012"])
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+
+        recorded = open(keys_file).read().strip().split('\n')
+        assert "RHAIRFE-6010" in recorded
+        assert "RHAIRFE-6011" not in recorded
+        assert "RHAIRFE-6012" in recorded
+
+    def test_multiple_keys_persisted(self, jira, tmp_path):
+        """All successfully acquired keys are persisted; parent dirs created."""
+        jira.create("RHAIRFE-6020", "RFE A", "Description.")
+        jira.create("RHAIRFE-6021", "RFE B", "Description.")
+        jira.create("RHAIRFE-6022", "RFE C", "Description.")
+        keys_file = str(tmp_path / "sub" / "locked.txt")
+
+        result = _run(jira, ["lock",
+                              "--locked-keys-file", keys_file,
+                              "RHAIRFE-6020", "RHAIRFE-6021", "RHAIRFE-6022"])
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+
+        recorded = open(keys_file).read().strip().split('\n')
+        assert set(recorded) == {
+            "RHAIRFE-6020", "RHAIRFE-6021", "RHAIRFE-6022"}
+
+        stdout_keys = result.stdout.strip().split()
+        assert set(stdout_keys) == {
+            "RHAIRFE-6020", "RHAIRFE-6021", "RHAIRFE-6022"}
+
+    def test_lock_strat_records_rfe_key(self, jira, tmp_path):
+        """lock-strat records the resolved RHAIRFE key, not the RHAISTRAT key."""
+        jira.create("RHAIRFE-6030", "Source RFE", "Description.")
+        jira.create("RHAISTRAT-6030", "Strategy", "Description.",
+                     labels=["strat-creator-auto-created"])
+        _create_cloners_link(jira, "RHAISTRAT-6030", "RHAIRFE-6030")
+        keys_file = str(tmp_path / "locked.txt")
+
+        result = _run(jira, ["lock-strat",
+                              "--locked-keys-file", keys_file,
+                              "RHAISTRAT-6030"])
+        assert result.returncode == 0, f"stderr: {result.stderr}"
+
+        content = open(keys_file).read()
+        assert "RHAIRFE-6030" in content
+        assert "RHAISTRAT-6030" not in content
+
+    def test_omitted_preserves_behavior(self, jira):
+        """Omitting --locked-keys-file preserves existing behavior."""
+        jira.create("RHAIRFE-6040", "RFE", "Description.")
+
+        result = _run(jira, ["lock", "RHAIRFE-6040"])
+        assert result.returncode == 0
+        assert "RHAIRFE-6040" in result.stdout.strip()
+        assert "LOCKED RHAIRFE-6040" in result.stderr
+        assert "strat-creator-processing" in _get_labels(jira, "RHAIRFE-6040")
+
+    def test_stale_file_replaced(self, jira, tmp_path):
+        """Stale contents from a prior invocation are replaced."""
+        jira.create("RHAIRFE-6050", "New RFE", "Description.")
+        keys_file = str(tmp_path / "locked.txt")
+
+        with open(keys_file, 'w') as f:
+            f.write("RHAIRFE-9999\nRHAIRFE-8888\n")
+
+        result = _run(jira, ["lock",
+                              "--locked-keys-file", keys_file,
+                              "RHAIRFE-6050"])
+        assert result.returncode == 0
+
+        content = open(keys_file).read()
+        assert "RHAIRFE-9999" not in content
+        assert "RHAIRFE-8888" not in content
+        assert "RHAIRFE-6050" in content
+
+    def test_partial_failure_retains_earlier_records(self, jira, tmp_path):
+        """API failure mid-batch retains records for earlier acquired locks."""
+        jira.create("RHAIRFE-6060", "Good RFE", "Description.")
+        # RHAIRFE-6061 intentionally not created — causes API error
+        keys_file = str(tmp_path / "locked.txt")
+
+        result = _run(jira, ["lock",
+                              "--locked-keys-file", keys_file,
+                              "RHAIRFE-6060", "RHAIRFE-6061"])
+        assert result.returncode != 0
+
+        content = open(keys_file).read()
+        assert "RHAIRFE-6060" in content
+        assert "RHAIRFE-6061" not in content
+
+        labels = _get_labels(jira, "RHAIRFE-6060")
+        assert "strat-creator-processing" in labels
+
+    def test_recording_failure_triggers_rollback(self, tmp_path, monkeypatch,
+                                                  capsys):
+        """Unit test: write failure after add_labels triggers remove_labels."""
+        scripts_dir = os.path.join(os.path.dirname(__file__), "..", "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+        import lock_issues
+
+        remove_calls = []
+        monkeypatch.setattr(lock_issues, "_get_labels",
+                            lambda *a: set())
+        monkeypatch.setattr(lock_issues, "add_labels",
+                            lambda *a: None)
+        monkeypatch.setattr(lock_issues, "remove_labels",
+                            lambda s, u, t, k, labels: remove_calls.append(k))
+
+        keys_file = str(tmp_path / "locked.txt")
+        with open(keys_file, 'w'):
+            pass
+        os.chmod(keys_file, 0o000)
+
+        try:
+            exit_code, locked = lock_issues.lock(
+                "http://x", "u", "t", ["RHAIRFE-7001"],
+                locked_keys_file=keys_file)
+        finally:
+            os.chmod(keys_file, 0o644)
+
+        assert exit_code == 2
+        assert "RHAIRFE-7001" not in locked
+        assert "RHAIRFE-7001" in remove_calls
+
+        captured = capsys.readouterr()
+        assert "RHAIRFE-7001" not in captured.out
+
+    def test_lock_strat_missing_label_truncates_stale_file(self, jira,
+                                                            tmp_path):
+        """Stale file is truncated even when lock-strat fails on missing label."""
+        jira.create("RHAISTRAT-6100", "Not ours", "Description.",
+                     labels=["strat-creator-rubric-pass"])
+        jira.create("RHAIRFE-6100", "Source RFE", "Description.")
+        _create_cloners_link(jira, "RHAISTRAT-6100", "RHAIRFE-6100")
+        keys_file = str(tmp_path / "locked.txt")
+
+        with open(keys_file, 'w') as f:
+            f.write("RHAIRFE-9999\n")
+
+        result = _run(jira, ["lock-strat",
+                              "--locked-keys-file", keys_file,
+                              "RHAISTRAT-6100"])
+        assert result.returncode == 2
+
+        content = open(keys_file).read()
+        assert "RHAIRFE-9999" not in content
+        assert content.strip() == ""
+
+    def test_lock_strat_blocking_label_truncates_stale_file(self, jira,
+                                                             tmp_path):
+        """Stale file is truncated even when lock-strat is blocked."""
+        jira.create("RHAISTRAT-6110", "Blocked", "Description.",
+                     labels=["strat-creator-auto-created",
+                             "strat-creator-needs-attention"])
+        jira.create("RHAIRFE-6110", "Source RFE", "Description.")
+        _create_cloners_link(jira, "RHAISTRAT-6110", "RHAIRFE-6110")
+        keys_file = str(tmp_path / "locked.txt")
+
+        with open(keys_file, 'w') as f:
+            f.write("RHAIRFE-9999\n")
+
+        result = _run(jira, ["lock-strat",
+                              "--locked-keys-file", keys_file,
+                              "RHAISTRAT-6110"])
+        assert result.returncode == 1
+
+        content = open(keys_file).read()
+        assert "RHAIRFE-9999" not in content
+        assert content.strip() == ""
+
+    def test_lock_strat_no_cloners_truncates_stale_file(self, jira, tmp_path):
+        """Stale file is truncated even when lock-strat finds no Cloners link."""
+        jira.create("RHAISTRAT-6120", "Orphan", "Description.",
+                     labels=["strat-creator-auto-created"])
+        keys_file = str(tmp_path / "locked.txt")
+
+        with open(keys_file, 'w') as f:
+            f.write("RHAIRFE-9999\n")
+
+        result = _run(jira, ["lock-strat",
+                              "--locked-keys-file", keys_file,
+                              "RHAISTRAT-6120"])
+        assert result.returncode == 2
+
+        content = open(keys_file).read()
+        assert "RHAIRFE-9999" not in content
+        assert content.strip() == ""
+
+    def test_lock_strat_api_failure_truncates_stale_file(self, jira,
+                                                          tmp_path):
+        """Stale file is truncated even when lock-strat hits API failure."""
+        # RHAISTRAT-6130 intentionally not created — causes 404
+        keys_file = str(tmp_path / "locked.txt")
+
+        with open(keys_file, 'w') as f:
+            f.write("RHAIRFE-9999\n")
+
+        result = _run(jira, ["lock-strat",
+                              "--locked-keys-file", keys_file,
+                              "RHAISTRAT-6130"])
+        assert result.returncode != 0
+
+        content = open(keys_file).read()
+        assert "RHAIRFE-9999" not in content
+        assert content.strip() == ""

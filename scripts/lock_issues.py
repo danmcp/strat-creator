@@ -56,6 +56,15 @@ STRAT_BLOCKING_LABELS = frozenset({
 })
 
 
+def _init_locked_keys_file(path):
+    """Create parent directories and truncate the locked-keys file."""
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    with open(path, 'w'):
+        pass
+
+
 def _get_labels(server, user, token, key):
     """Fetch the labels for a Jira issue."""
     data = get_issue(server, user, token, key, fields=["labels"])
@@ -81,13 +90,14 @@ def _resolve_strat_to_rfe(server, user, token, strat_key):
     return None
 
 
-def lock(server, user, token, keys):
+def lock(server, user, token, keys, locked_keys_file=None):
     """Lock RFE(s) by applying strat-creator-processing label.
 
     Skips blocked keys, prints locked subset to stdout.
-    Returns (exit_code, locked_keys). Always returns exit code 0.
+    Returns (exit_code, locked_keys).
     """
     locked = []
+    exit_code = 0
 
     for key in keys:
         labels = _get_labels(server, user, token, key)
@@ -98,6 +108,25 @@ def lock(server, user, token, keys):
             continue
 
         add_labels(server, user, token, key, [PROCESSING_LABEL])
+
+        if locked_keys_file is not None:
+            try:
+                with open(locked_keys_file, 'a') as f:
+                    f.write(key + '\n')
+                    f.flush()
+            except OSError as exc:
+                print(f"ERROR recording lock for {key}: {exc}",
+                      file=sys.stderr)
+                try:
+                    remove_labels(server, user, token, key,
+                                  [PROCESSING_LABEL])
+                    print(f"ROLLED BACK {key}", file=sys.stderr)
+                except Exception:
+                    print(f"WARNING: rollback failed for {key}",
+                          file=sys.stderr)
+                exit_code = 2
+                break
+
         locked.append(key)
         print(f"LOCKED {key}", file=sys.stderr)
 
@@ -106,9 +135,9 @@ def lock(server, user, token, keys):
 
     if not locked:
         print("No keys locked", file=sys.stderr)
-        return 0, []
+        return exit_code, []
 
-    return 0, locked
+    return exit_code, locked
 
 
 def unlock(server, user, token, keys):
@@ -119,7 +148,7 @@ def unlock(server, user, token, keys):
     return 0
 
 
-def lock_strat(server, user, token, strat_key):
+def lock_strat(server, user, token, strat_key, locked_keys_file=None):
     """Lock via STRAT key: resolve to RFE, validate STRAT guards, lock RFE."""
     # Validate STRAT labels
     strat_labels = _get_labels(server, user, token, strat_key)
@@ -145,7 +174,10 @@ def lock_strat(server, user, token, strat_key):
 
     # Lock the RFE. A blocked linked RFE is contention for this specific
     # STRAT request, so lock-strat must still fail.
-    _, locked_keys = lock(server, user, token, [rfe_key])
+    exit_code, locked_keys = lock(server, user, token, [rfe_key],
+                                  locked_keys_file=locked_keys_file)
+    if exit_code != 0:
+        return exit_code
     return 0 if locked_keys else 1
 
 
@@ -168,7 +200,27 @@ def main():
         return 2
 
     command = sys.argv[1]
-    keys = sys.argv[2:]
+    args = sys.argv[2:]
+
+    locked_keys_file = None
+    if command in ("lock", "lock-strat") and "--locked-keys-file" in args:
+        idx = args.index("--locked-keys-file")
+        if idx + 1 >= len(args):
+            print("--locked-keys-file requires a path argument",
+                  file=sys.stderr)
+            return 2
+        locked_keys_file = args[idx + 1]
+        args = args[:idx] + args[idx + 2:]
+
+    keys = args
+
+    if locked_keys_file is not None:
+        try:
+            _init_locked_keys_file(locked_keys_file)
+        except OSError as exc:
+            print(f"ERROR initializing {locked_keys_file}: {exc}",
+                  file=sys.stderr)
+            return 2
 
     server, user, token = require_env()
     if not all([server, user, token]):
@@ -177,7 +229,8 @@ def main():
         return 2
 
     if command == "lock":
-        exit_code, _ = lock(server, user, token, keys)
+        exit_code, _ = lock(server, user, token, keys,
+                            locked_keys_file=locked_keys_file)
         return exit_code
     elif command == "unlock":
         return unlock(server, user, token, keys)
@@ -185,7 +238,8 @@ def main():
         if len(keys) != 1:
             print("lock-strat takes exactly one STRAT key", file=sys.stderr)
             return 2
-        return lock_strat(server, user, token, keys[0])
+        return lock_strat(server, user, token, keys[0],
+                          locked_keys_file=locked_keys_file)
     elif command == "unlock-strat":
         if len(keys) != 1:
             print("unlock-strat takes exactly one STRAT key", file=sys.stderr)
