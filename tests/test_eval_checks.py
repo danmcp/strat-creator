@@ -215,6 +215,36 @@ def test_unrelated_reads_and_tools_are_not_credited(check, tmp_path):
     assert "0 of 1" in rationale
 
 
+def test_list_shaped_content_counts_by_serialized_length(check, tmp_path):
+    """Captures may carry tool_result content as [{'type': 'text', ...}] blocks."""
+    hit = _write_case(tmp_path / "hit", [([{"type": "text", "text": DOC}], False)])
+    miss = _write_case(
+        tmp_path / "miss", [([{"type": "text", "text": EMPTY_LISTING}], False)])
+
+    value_hit, _ = check({"case_dir": str(hit)})
+    value_miss, _ = check({"case_dir": str(miss)})
+
+    assert value_hit is True
+    assert value_miss is False
+
+
+def test_malformed_transcript_lines_do_not_error_the_judge(check, tmp_path):
+    """A corrupted capture must not raise: an errored check drops the case from
+    the min_pass_rate denominator, failing open at the run level."""
+    case_dir = _write_case(tmp_path, [(DOC, False)])
+    with open(case_dir / "subagents" / "refine.jsonl", "a") as f:
+        f.write("null\n")
+        f.write('"compacted"\n')
+        f.write("123\n")
+        f.write(json.dumps(
+            {"sessionId": SESSION, "type": "summary", "message": "compacted"}) + "\n")
+
+    value, rationale = check({"case_dir": str(case_dir)})
+
+    assert value is True
+    assert "1 of 1" in rationale
+
+
 def test_reads_from_another_session_are_not_credited(check, tmp_path):
     """Reviewer transcripts land in the same directory; only refine's count."""
     case_dir = _write_case(tmp_path, [(DOC, False)], session=OTHER_SESSION)
