@@ -279,10 +279,25 @@ judges:
   #     "total 0", and the gate scored every one of them as grounding. A tool_use is
   #     an intent; only its tool_result says whether any documentation came back. So
   #     each qualifying call is paired to its result by tool_use_id, errors are
-  #     discarded, and the result must clear MIN_RESULT_CHARS. That threshold
-  #     separates real documentation (architecture docs run to thousands of
-  #     characters) from the directory listings and empty-glob replies an empty
-  #     context yields — the longest such reply in the failing run was 151 chars.
+  #     discarded (load-bearing: real error replies run 218-249 chars, past any sane
+  #     length bar), and the result must clear MIN_RESULT_CHARS.
+  #     Hits are credited only from Read/Grep/Glob results whose input points under
+  #     .context/architecture-context/ (where the harness stages the docs). Bash
+  #     counts as an attempt but never as a hit: its output length says nothing
+  #     about documentation — in the stored 2026-08-05/2026-08-10 runs, existence
+  #     probes over an EMPTY context cleared 200 chars easily (compound ls/find
+  #     output echoing ~170-char absolute workspace paths, the fetch script's
+  #     ~460-char cp-failure message). The path requirement exists because a bare
+  #     "architecture-context" match also admits Read of
+  #     scripts/fetch-architecture-context.sh (1875 chars, qualifying by filename
+  #     alone) — the sole "hit" in several empty-context cases. Replayed over the
+  #     stored runs: this rule scores 10/24 and 8/24, exactly the hand-classified
+  #     grounded cases, where length-only scored 17/24 and 18/24 and flipped both
+  #     run verdicts to PASS at min_pass_rate 0.7. Every genuinely grounded case
+  #     had 4-33 doc-file Read hits, so the tighter rule costs no observed true
+  #     positive. For in-tree doc reads the threshold does separate documentation
+  #     from emptiness: the staged docs are all >= 857 bytes, while empty-context
+  #     replies are the likes of "No files found" (14 chars).
   - name: architecture_context_used
     description: strategy-refine itself consulted the architecture-context docs (grounding), not just asserted architecture.
     check: |
@@ -315,7 +330,9 @@ judges:
       if not transcripts:
           return False, "no subagent transcripts (SubagentStop capture disabled?)"
 
-      READ_TOOLS = {"Read", "Grep", "Glob", "Bash"}
+      READ_TOOLS = {"Read", "Grep", "Glob", "Bash"}   # what counts as LOOKING at the docs
+      HIT_TOOLS = {"Read", "Grep", "Glob"}            # what can EVIDENCE docs coming back...
+      DOCS_DIR = ".context/architecture-context"      # ...and only from under here
       MIN_RESULT_CHARS = 200
       seen = 0
       attempts = 0
@@ -335,7 +352,7 @@ judges:
           if first.get("sessionId") != session:
               continue
           seen += 1
-          pending = set()
+          pending = {}
           for line in lines:
               try:
                   ev = json.loads(line)
@@ -345,12 +362,13 @@ judges:
                   if not isinstance(b, dict):
                       continue
                   if b.get("type") == "tool_use":
-                      if b.get("name") in READ_TOOLS and "architecture-context" in str(b.get("input", {})):
-                          pending.add(b.get("id"))
+                      tool_input = str(b.get("input", {}))
+                      if b.get("name") in READ_TOOLS and "architecture-context" in tool_input:
+                          pending[b.get("id")] = b.get("name") in HIT_TOOLS and DOCS_DIR in tool_input
                           attempts += 1
                   elif b.get("type") == "tool_result" and b.get("tool_use_id") in pending:
-                      pending.discard(b.get("tool_use_id"))
-                      if b.get("is_error"):
+                      eligible = pending.pop(b.get("tool_use_id"))
+                      if not eligible or b.get("is_error"):
                           continue
                       content = b.get("content")
                       text = content if isinstance(content, str) else json.dumps(content)
@@ -358,7 +376,7 @@ judges:
                           hits += 1
       if not seen:
           return False, "no subagent transcript belongs to the refine session"
-      return hits > 0, "refine session got content from {} of {} architecture-context reads (across {} of its transcripts)".format(hits, attempts, seen)
+      return hits > 0, "refine session got documentation from {} of {} architecture-context reads (across {} of its transcripts)".format(hits, attempts, seen)
 
   # --- Reported metric: the pipeline's OWN assess-strat total (0-8), for
   #     pipeline-vs-independent-judge agreement. Aggregates as a mean.

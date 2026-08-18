@@ -19,6 +19,24 @@ OTHER_SESSION = "99999999-8888-7777-6666-555555555555"
 DOC = "RHOAI platform architecture. " * 20
 # What an empty context directory actually returned in the 2026-08-11 run.
 EMPTY_LISTING = "No files found"
+# What empty-context Bash probes returned in the 2026-08-05/08-10 runs: long output
+# that proves nothing — compound ls/find existence checks echoing absolute workspace
+# paths and unrelated staged files, and the fetch script's cp-failure message.
+WORKSPACE = "/tmp/agent-eval/strat-creator-eval/cases/RHAIRFE-0000-abcdef/workspace"
+EMPTY_DIR_PROBE = (
+    "total 0\n"
+    "drwxr-xr-x  2 runner runner  40 Aug 10 12:00 .\n"
+    "drwxr-xr-x  8 runner runner 160 Aug 10 12:00 ..\n"
+    "---\n"
+    + "\n".join(
+        "{}/eval/.assets/assess-strat/rubric-{:02d}.md".format(WORKSPACE, i)
+        for i in range(10)
+    )
+)
+FETCH_FAILURE = (
+    "cp: cannot stat '{}/local-arch/*': No such file or directory\n".format(WORKSPACE)
+    * 6
+)
 
 
 def _load_check(name):
@@ -31,10 +49,27 @@ def _load_check(name):
     return namespace["_check"]
 
 
-def _write_case(tmp_path, results, session=SESSION, tool="Read"):
+def _tool_use(call_id, tool, tool_input, session=SESSION):
+    return {
+        "sessionId": session,
+        "type": "assistant",
+        "message": {"content": [{
+            "type": "tool_use", "id": call_id, "name": tool, "input": tool_input,
+        }]},
+    }
+
+
+def _tool_result(call_id, content, is_error=False, session=SESSION):
+    block = {"type": "tool_result", "tool_use_id": call_id, "content": content}
+    if is_error:
+        block["is_error"] = True
+    return {"sessionId": session, "type": "user", "message": {"content": [block]}}
+
+
+def _write_case(tmp_path, results, session=SESSION, tool="Read", extra_events=None):
     """Build a case dir whose refine subagent made one read per entry in results.
 
-    Each entry is (content, is_error).
+    Each entry is (content, is_error). extra_events appends raw transcript events.
     """
     case_dir = tmp_path / "case"
     step_dir = case_dir / "steps" / "refine"
@@ -42,27 +77,16 @@ def _write_case(tmp_path, results, session=SESSION, tool="Read"):
     (step_dir / "stdout.log").write_text(
         json.dumps({"type": "system", "session_id": session}) + "\n")
 
+    if tool == "Bash":
+        tool_input = {"command": "ls -la .context/architecture-context"}
+    else:
+        tool_input = {"file_path": ".context/architecture-context/PLATFORM.md"}
     events = [{"sessionId": session, "type": "user", "message": {"content": []}}]
     for index, (content, is_error) in enumerate(results):
         call_id = "toolu_{}".format(index)
-        events.append({
-            "sessionId": session,
-            "type": "assistant",
-            "message": {"content": [{
-                "type": "tool_use",
-                "id": call_id,
-                "name": tool,
-                "input": {"file_path": ".context/architecture-context/PLATFORM.md"},
-            }]},
-        })
-        block = {"type": "tool_result", "tool_use_id": call_id, "content": content}
-        if is_error:
-            block["is_error"] = True
-        events.append({
-            "sessionId": session,
-            "type": "user",
-            "message": {"content": [block]},
-        })
+        events.append(_tool_use(call_id, tool, tool_input, session=session))
+        events.append(_tool_result(call_id, content, is_error, session=session))
+    events.extend(extra_events or [])
 
     subagents = case_dir / "subagents"
     subagents.mkdir()
@@ -117,13 +141,78 @@ def test_mixed_results_pass_on_the_substantive_one(check, tmp_path):
     assert "1 of 3" in rationale
 
 
-@pytest.mark.parametrize("tool", ["Read", "Grep", "Glob", "Bash"])
-def test_every_read_tool_counts(check, tmp_path, tool):
+@pytest.mark.parametrize("tool", ["Read", "Grep", "Glob"])
+def test_structured_read_tools_count(check, tmp_path, tool):
     case_dir = _write_case(tmp_path, [(DOC, False)], tool=tool)
 
     value, _ = check({"case_dir": str(case_dir)})
 
     assert value is True
+
+
+def test_bash_output_never_counts_as_documentation(check, tmp_path):
+    """Bash length proves nothing: in the 2026-08-05/08-10 runs, empty-context
+    probes returned 242-6187 chars of paths and cp errors, past any threshold.
+    Bash still counts as an attempt, so the rationale reflects the looking.
+    """
+    case_dir = _write_case(
+        tmp_path,
+        [(EMPTY_DIR_PROBE, False), (FETCH_FAILURE, False), (DOC, False)],
+        tool="Bash")
+
+    value, rationale = check({"case_dir": str(case_dir)})
+
+    assert value is False
+    assert "0 of 3" in rationale
+
+
+def test_threshold_boundary(check, tmp_path):
+    """Pins MIN_RESULT_CHARS = 200 and the >= comparison."""
+    at_threshold = _write_case(tmp_path / "at", [("x" * 200, False)])
+    below = _write_case(tmp_path / "below", [("x" * 199, False)])
+
+    value_at, _ = check({"case_dir": str(at_threshold)})
+    value_below, _ = check({"case_dir": str(below)})
+
+    assert value_at is True
+    assert value_below is False
+
+
+def test_reading_the_fetch_script_is_not_documentation(check, tmp_path):
+    """scripts/fetch-architecture-context.sh qualifies by filename alone; its
+    1875-char source was the sole 'hit' in several empty-context cases in the
+    2026-08-05/08-10 runs. Only results from under .context/architecture-context/
+    evidence documentation; the script read still counts as an attempt."""
+    script = ("#!/bin/bash\n# Fetches the latest RHOAI architecture context.\n"
+              + "echo fetching...\n" * 40)
+    case_dir = _write_case(tmp_path, [(EMPTY_LISTING, False)], extra_events=[
+        _tool_use("s1", "Read", {"file_path": "scripts/fetch-architecture-context.sh"}),
+        _tool_result("s1", script),
+    ])
+
+    value, rationale = check({"case_dir": str(case_dir)})
+
+    assert value is False
+    assert "0 of 2" in rationale
+
+
+def test_unrelated_reads_and_tools_are_not_credited(check, tmp_path):
+    """Long results count only for architecture-context reads: not reads of other
+    files (refine always reads the strategy itself), not non-read tools, and not
+    results that match no qualifying call."""
+    case_dir = _write_case(tmp_path, [(EMPTY_LISTING, False)], extra_events=[
+        _tool_use("d1", "Read", {"file_path": "artifacts/strat-tasks/STRAT-001.md"}),
+        _tool_result("d1", DOC),
+        _tool_use("d2", "Write",
+                  {"file_path": "notes/architecture-context.md", "content": DOC}),
+        _tool_result("d2", DOC),
+        _tool_result("dangling", DOC),
+    ])
+
+    value, rationale = check({"case_dir": str(case_dir)})
+
+    assert value is False
+    assert "0 of 1" in rationale
 
 
 def test_reads_from_another_session_are_not_credited(check, tmp_path):
