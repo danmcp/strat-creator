@@ -196,6 +196,37 @@ def test_reading_the_fetch_script_is_not_documentation(check, tmp_path):
     assert "0 of 2" in rationale
 
 
+def test_sibling_directory_paths_are_not_credited(check, tmp_path):
+    """.context/architecture-context-backup/ shares the prefix but is not the
+    staged docs dir; a long read from it stays an attempt, never a hit."""
+    case_dir = _write_case(tmp_path, [(EMPTY_LISTING, False)], extra_events=[
+        _tool_use("b1", "Read",
+                  {"file_path": ".context/architecture-context-backup/README.md"}),
+        _tool_result("b1", DOC),
+    ])
+
+    value, rationale = check({"case_dir": str(case_dir)})
+
+    assert value is False
+    assert "0 of 2" in rationale
+
+
+def test_grep_of_the_docs_dir_itself_counts(check, tmp_path):
+    """Grep/Glob address the docs dir as a path with NO trailing slash (34 of
+    the 291 qualifying structured reads in the stored runs); the directory
+    boundary check must keep these eligible."""
+    case_dir = _write_case(tmp_path, [], extra_events=[
+        _tool_use("g1", "Grep",
+                  {"pattern": "KServe", "path": ".context/architecture-context"}),
+        _tool_result("g1", DOC),
+    ])
+
+    value, rationale = check({"case_dir": str(case_dir)})
+
+    assert value is True
+    assert "1 of 1" in rationale
+
+
 def test_unrelated_reads_and_tools_are_not_credited(check, tmp_path):
     """Long results count only for architecture-context reads: not reads of other
     files (refine always reads the strategy itself), not non-read tools, and not
