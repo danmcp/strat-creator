@@ -349,16 +349,24 @@ judges:
               first = json.loads(lines[0])
           except ValueError:
               continue
-          if first.get("sessionId") != session:
+          if not isinstance(first, dict) or first.get("sessionId") != session:
               continue
           seen += 1
           pending = {}
+          # Guard every dereference: an exception here doesn't fail closed, it
+          # errors the judge, and an errored case drops OUT of the min_pass_rate
+          # denominator -- a corrupted capture would fail open at the run level.
           for line in lines:
               try:
                   ev = json.loads(line)
               except ValueError:
                   continue
-              for b in (ev.get("message") or {}).get("content") or []:
+              if not isinstance(ev, dict):
+                  continue
+              msg = ev.get("message")
+              if not isinstance(msg, dict):
+                  continue
+              for b in msg.get("content") or []:
                   if not isinstance(b, dict):
                       continue
                   if b.get("type") == "tool_use":
