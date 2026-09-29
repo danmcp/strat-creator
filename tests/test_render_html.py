@@ -122,6 +122,70 @@ class TestReportHtmlRendering:
         assert "<!DOCTYPE html>" in html
 
 
+class TestLoadArtifactsSkipParsing:
+    """AISDLC-149: Regression tests for load_artifacts skip entry parsing."""
+
+    def _write_skip_file(self, tmpdir, rows):
+        artifacts = os.path.join(tmpdir, "artifacts")
+        os.makedirs(os.path.join(artifacts, "strat-tasks"), exist_ok=True)
+        skip_path = os.path.join(artifacts, "strat-skipped.md")
+        lines = [
+            "# Skipped RFEs\n",
+            "\n",
+            "| RFE Key | Title | Reason | Run |\n",
+            "|---------|-------|--------|-----|\n",
+        ]
+        for row in rows:
+            lines.append(f"| {row[0]} | {row[1]} | {row[2]} | {row[3]} |\n")
+        with open(skip_path, "w") as f:
+            f.writelines(lines)
+        return artifacts
+
+    def test_rubric_pass_skip_entry_not_dropped(self):
+        reason = (
+            "RHAISTRAT-2405 already processed"
+            " (label: strat-creator-rubric-pass)"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifacts = self._write_skip_file(tmpdir, [
+                ("RHAIRFE-1535", "Notebook image", reason,
+                 "batch-jql @ 2026-09-28T16:07Z"),
+            ])
+            _, _, _, skipped, _ = report.load_artifacts(artifacts)
+            assert len(skipped) == 1
+            assert skipped[0]["rfe_key"] == "RHAIRFE-1535"
+
+    def test_needs_attention_goes_to_pending_review(self):
+        reason = (
+            "RHAISTRAT-3000 already processed"
+            " (label: strat-creator-needs-attention)"
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifacts = self._write_skip_file(tmpdir, [
+                ("RHAIRFE-2000", "Some feature", reason,
+                 "batch-jql @ 2026-09-28T16:07Z"),
+            ])
+            _, _, _, skipped, pending_review = (
+                report.load_artifacts(artifacts)
+            )
+            assert len(pending_review) == 1
+            assert pending_review[0]["rfe_key"] == "RHAIRFE-2000"
+            assert len(skipped) == 0
+
+    def test_non_processed_reason_goes_to_skipped(self):
+        reason = "missing labels: rfe-creator-autofix-rubric-pass"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifacts = self._write_skip_file(tmpdir, [
+                ("RHAIRFE-3000", "Another feature", reason,
+                 "batch-jql @ 2026-09-28T16:07Z"),
+            ])
+            _, _, _, skipped, pending_review = (
+                report.load_artifacts(artifacts)
+            )
+            assert len(skipped) == 1
+            assert len(pending_review) == 0
+
+
 class TestDashboardHtmlRendering:
     def _render(self):
         run = {

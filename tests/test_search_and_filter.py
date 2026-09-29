@@ -448,3 +448,21 @@ class TestFindProcessedRfeIds:
             excluded_strat_statuses=self.EXCLUDED_STATUSES,
         )
         assert "RHAIRFE-1500" in processed
+
+    def test_no_override_single_open_clone_with_skip_label_plus_others(self, jira):
+        """AISDLC-149: Single open clone in New with a skip label AND other
+        unrelated labels — must stay excluded. Reproduces the RHAIRFE-1535
+        bug where JQL 'labels NOT IN (skip_labels)' matched per-value,
+        incorrectly un-excluding the RFE."""
+        self._setup_linked_pair(jira, "RHAIRFE-1600", "RHAISTRAT-2600",
+                                labels=["strat-creator-rubric-pass",
+                                        "rhai-factory-nvidia",
+                                        "rfe-creator-autofix-rubric-pass"],
+                                status="New")
+
+        processed = find_processed_rfe_ids(
+            jira.url, "admin", "admin",
+            skip_labels=self.SKIP_LABELS,
+            excluded_strat_statuses=self.EXCLUDED_STATUSES,
+        )
+        assert "RHAIRFE-1600" in processed

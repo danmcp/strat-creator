@@ -318,19 +318,21 @@ def find_processed_rfe_ids(server, user, token, skip_labels,
         open_jql = (f"project = {strat_project} "
                     f"AND status NOT IN ({sc})")
         open_issues = search_issues(server, user, token, open_jql,
-                                    fields=["issuelinks"])
+                                    fields=["issuelinks", "labels"])
         open_counts = _count_rfe_clones_from_issues(open_issues)
 
         unlabeled_rfes = set()
         if skip_labels:
-            lc = ", ".join(f'"{label}"' for label in skip_labels)
-            unlabeled_jql = (f"{open_jql} AND "
-                             f"(labels NOT IN ({lc}) OR labels IS EMPTY)")
-            unlabeled_issues = search_issues(
-                server, user, token, unlabeled_jql,
-                fields=["issuelinks"])
+            skip_set = set(skip_labels)
+            truly_unlabeled = [
+                issue for issue in open_issues
+                if not (set(
+                    label.get("name", label) if isinstance(label, dict) else label
+                    for label in issue.get("fields", {}).get("labels", [])
+                ) & skip_set)
+            ]
             unlabeled_rfes = _extract_rfe_keys_from_issues(
-                unlabeled_issues)
+                truly_unlabeled)
         else:
             unlabeled_rfes = set(open_counts)
 

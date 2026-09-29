@@ -116,6 +116,8 @@ def load_artifacts(artifacts_dir):
                                 strat_match = re.match(r'(\S+)\s+already processed', reason)
                                 entry["strat_key"] = strat_match.group(1) if strat_match else ""
                                 pending_review.append(entry)
+                            else:
+                                skipped.append(entry)
                         else:
                             skipped.append(entry)
 
